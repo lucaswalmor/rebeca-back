@@ -2,11 +2,13 @@
 
 namespace App\Http\Controllers;
 
+use App\Http\Requests\StoreUserRequest;
+use App\Http\Requests\UpdateUserRequest;
 use App\Models\User;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Storage;
-use Illuminate\Validation\Rule;
 
 class UserController extends Controller
 {
@@ -16,27 +18,18 @@ class UserController extends Controller
     public function index()
     {
         $users = User::all();
-        
+
         return response()->json([
-            'data' => $users
+            'data' => $users,
         ]);
     }
 
     /**
      * Store a newly created resource in storage.
      */
-    public function store(Request $request)
+    public function store(StoreUserRequest $request)
     {
-        $validated = $request->validate([
-            'nome' => 'required|string|max:255',
-            'sobrenome' => 'required|string|max:255',
-            'apelido' => 'required|string|max:255',
-            'email' => 'required|string|email|max:255|unique:users',
-            'password' => 'required|string|min:6',
-            'telefone' => 'required|string|max:20',
-            'data_nascimento' => 'required|date',
-            'is_admin' => 'boolean',
-        ]);
+        $validated = $request->validated();
 
         if (isset($validated['password'])) {
             $validated['password'] = Hash::make($validated['password']);
@@ -46,7 +39,7 @@ class UserController extends Controller
 
         return response()->json([
             'message' => 'Usuário criado com sucesso.',
-            'data' => $user
+            'data' => $user,
         ], 201);
     }
 
@@ -56,64 +49,76 @@ class UserController extends Controller
     public function show(string $id)
     {
         $user = User::findOrFail($id);
-        
+
         return response()->json([
-            'data' => $user
+            'data' => $user,
         ]);
     }
 
     /**
      * Buscar usuário por apelido (rota pública)
      */
-    public function findByApelido(string $apelido)
+    public function findByApelido(string $apelido, Request $request)
     {
         $user = User::where('apelido', $apelido)->first();
-        
-        if (!$user) {
+
+        if (! $user) {
             return response()->json([
-                'message' => 'Usuário não encontrado.'
+                'message' => 'Usuário não encontrado.',
             ], 404);
         }
+
+        // Tentar obter o usuário autenticado de múltiplas formas
+        // Primeiro tenta pelo request (funciona em rotas com middleware)
+        $loggedUser = $request->user();
         
+        // Se não encontrou, tenta pelo Auth (funciona mesmo em rotas públicas se houver token)
+        if (! $loggedUser && $request->bearerToken()) {
+            $loggedUser = Auth::guard('sanctum')->user();
+        }
+        
+        $isAdmin = $loggedUser && $loggedUser->isAdmin();
+
+        // Contar posts por tipo
+        // Se não for admin, contar apenas posts ativos
+        // Se for admin, contar todos os posts
+        $postsCount = [
+            'simples' => \App\Models\Post::where('user_id', $user->id)
+                ->where('tipo_post', 1)
+                ->when(! $isAdmin, function ($query) {
+                    $query->where('status', 'ativo');
+                })
+                ->count(),
+            'exclusivos' => \App\Models\Post::where('user_id', $user->id)
+                ->where('tipo_post', 2)
+                ->when(! $isAdmin, function ($query) {
+                    $query->where('status', 'ativo');
+                })
+                ->count(),
+            'outros' => \App\Models\Post::where('user_id', $user->id)
+                ->where('tipo_post', 3)
+                ->when(! $isAdmin, function ($query) {
+                    $query->where('status', 'ativo');
+                })
+                ->count(),
+        ];
+
+        $userData = $user->toArray();
+        $userData['posts_count'] = $postsCount;
+
         return response()->json([
-            'data' => $user
+            'data' => $userData,
         ]);
     }
 
     /**
      * Update the specified resource in storage.
      */
-    public function update(Request $request, string $id)
+    public function update(UpdateUserRequest $request, string $id)
     {
         $user = User::findOrFail($id);
 
-        // Validação básica
-        $validated = $request->validate([
-            'nome' => 'sometimes|string|max:255',
-            'sobrenome' => 'sometimes|string|max:255',
-            'apelido' => 'sometimes|string|max:255',
-            'email' => ['sometimes', 'string', 'email', 'max:255', Rule::unique('users')->ignore($user->id)],
-            'password' => 'sometimes|string|min:6',
-            'telefone' => 'sometimes|string|max:20',
-            'data_nascimento' => 'sometimes|date',
-            'is_admin' => 'sometimes|boolean',
-            // Campos do perfil
-            'instagram' => 'nullable|string|max:255',
-            'telegram' => 'nullable|string|max:255',
-            'whatsapp' => 'nullable|string|max:255',
-            'x_twitter' => 'nullable|string|max:255',
-            'tiktok' => 'nullable|string|max:255',
-            'facebook' => 'nullable|string|max:255',
-            'privacy' => 'nullable|string',
-            'sobre' => 'nullable|string',
-            'path_img_banner' => 'nullable|string|max:255',
-            'path_img_avatar' => 'nullable|string|max:255',
-            'valor_assinatura_mensal' => 'nullable|numeric|min:0',
-            'valor_assinatura_trimestral' => 'nullable|numeric|min:0',
-            'valor_assinatura_semestral' => 'nullable|numeric|min:0',
-            'valor_desconto_trimestral' => 'nullable|numeric|min:0|max:100',
-            'valor_desconto_semestral' => 'nullable|numeric|min:0|max:100',
-        ]);
+        $validated = $request->validated();
 
         // Hash da senha se fornecida
         if (isset($validated['password'])) {
@@ -124,11 +129,11 @@ class UserController extends Controller
         if (isset($validated['valor_assinatura_mensal']) && is_string($validated['valor_assinatura_mensal'])) {
             $validated['valor_assinatura_mensal'] = $this->converterValorFormatado($validated['valor_assinatura_mensal']);
         }
-        
+
         if (isset($validated['valor_assinatura_trimestral']) && is_string($validated['valor_assinatura_trimestral'])) {
             $validated['valor_assinatura_trimestral'] = $this->converterValorFormatado($validated['valor_assinatura_trimestral']);
         }
-        
+
         if (isset($validated['valor_assinatura_semestral']) && is_string($validated['valor_assinatura_semestral'])) {
             $validated['valor_assinatura_semestral'] = $this->converterValorFormatado($validated['valor_assinatura_semestral']);
         }
@@ -137,7 +142,7 @@ class UserController extends Controller
 
         return response()->json([
             'message' => 'Usuário atualizado com sucesso.',
-            'data' => $user->fresh()
+            'data' => $user->fresh(),
         ]);
     }
 
@@ -150,7 +155,7 @@ class UserController extends Controller
         $user->delete();
 
         return response()->json([
-            'message' => 'Usuário deletado com sucesso.'
+            'message' => 'Usuário deletado com sucesso.',
         ]);
     }
 
@@ -179,26 +184,26 @@ class UserController extends Controller
 
         // Upload do novo banner
         $file = $request->file('banner');
-        $path = "user/{$user->id}/banner/" . time() . '_' . $file->getClientOriginalName();
+        $path = "user/{$user->id}/banner/".time().'_'.$file->getClientOriginalName();
         Storage::disk('s3')->put($path, file_get_contents($file), 'public');
 
         // Construir URL completa do R2
         $publicUrl = config('filesystems.disks.s3.url');
         $bucket = config('filesystems.disks.s3.bucket');
-        
+
         if ($publicUrl) {
             if (strpos($publicUrl, 'r2.dev') !== false) {
-                $url = rtrim($publicUrl, '/') . '/' . $bucket . '/' . $path;
+                $url = rtrim($publicUrl, '/').'/'.$bucket.'/'.$path;
             } else {
-                $url = rtrim($publicUrl, '/') . '/' . $path;
+                $url = rtrim($publicUrl, '/').'/'.$path;
             }
         } else {
             $endpoint = config('filesystems.disks.s3.endpoint');
-            $url = rtrim($endpoint, '/') . '/' . $bucket . '/' . $path;
+            $url = rtrim($endpoint, '/').'/'.$bucket.'/'.$path;
         }
 
         // Remover /rebeca/ da URL antes de salvar no banco
-        $urlToSave = str_replace('/' . $bucket . '/', '/', $url);
+        $urlToSave = str_replace('/'.$bucket.'/', '/', $url);
 
         // Atualizar usuário
         $user->update(['path_img_banner' => $urlToSave]);
@@ -206,7 +211,7 @@ class UserController extends Controller
         return response()->json([
             'message' => 'Banner atualizado com sucesso.',
             'url' => $url,
-            'data' => $user->fresh()
+            'data' => $user->fresh(),
         ]);
     }
 
@@ -235,26 +240,26 @@ class UserController extends Controller
 
         // Upload do novo avatar
         $file = $request->file('avatar');
-        $path = "user/{$user->id}/avatar/" . time() . '_' . $file->getClientOriginalName();
+        $path = "user/{$user->id}/avatar/".time().'_'.$file->getClientOriginalName();
         Storage::disk('s3')->put($path, file_get_contents($file), 'public');
 
         // Construir URL completa do R2
         $publicUrl = config('filesystems.disks.s3.url');
         $bucket = config('filesystems.disks.s3.bucket');
-        
+
         if ($publicUrl) {
             if (strpos($publicUrl, 'r2.dev') !== false) {
-                $url = rtrim($publicUrl, '/') . '/' . $bucket . '/' . $path;
+                $url = rtrim($publicUrl, '/').'/'.$bucket.'/'.$path;
             } else {
-                $url = rtrim($publicUrl, '/') . '/' . $path;
+                $url = rtrim($publicUrl, '/').'/'.$path;
             }
         } else {
             $endpoint = config('filesystems.disks.s3.endpoint');
-            $url = rtrim($endpoint, '/') . '/' . $bucket . '/' . $path;
+            $url = rtrim($endpoint, '/').'/'.$bucket.'/'.$path;
         }
 
         // Remover /rebeca/ da URL antes de salvar no banco
-        $urlToSave = str_replace('/' . $bucket . '/', '/', $url);
+        $urlToSave = str_replace('/'.$bucket.'/', '/', $url);
 
         // Atualizar usuário
         $user->update(['path_img_avatar' => $urlToSave]);
@@ -262,15 +267,12 @@ class UserController extends Controller
         return response()->json([
             'message' => 'Avatar atualizado com sucesso.',
             'url' => $url,
-            'data' => $user->fresh()
+            'data' => $user->fresh(),
         ]);
     }
 
     /**
      * Converte valor formatado (R$ 100,00) para número decimal.
-     *
-     * @param string $valorFormatado
-     * @return float
      */
     private function converterValorFormatado(string $valorFormatado): float
     {
@@ -278,7 +280,7 @@ class UserController extends Controller
         $valorLimpo = preg_replace('/R\$\s*/', '', $valorFormatado);
         $valorLimpo = str_replace('.', '', $valorLimpo);
         $valorLimpo = str_replace(',', '.', $valorLimpo);
-        
+
         return (float) $valorLimpo;
     }
 }

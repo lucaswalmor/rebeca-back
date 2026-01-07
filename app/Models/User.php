@@ -11,7 +11,7 @@ use Laravel\Sanctum\HasApiTokens;
 class User extends Authenticatable
 {
     /** @use HasFactory<\Database\Factories\UserFactory> */
-    use HasFactory, Notifiable, HasApiTokens;
+    use HasApiTokens, HasFactory, Notifiable;
 
     /**
      * The attributes that are mass assignable.
@@ -76,8 +76,6 @@ class User extends Authenticatable
 
     /**
      * Verifica se o usuário é administrador.
-     *
-     * @return bool
      */
     public function isAdmin(): bool
     {
@@ -106,5 +104,37 @@ class User extends Authenticatable
     public function cuponsUsados()
     {
         return $this->hasMany(CupomUsado::class);
+    }
+
+    /**
+     * Relacionamento com posts.
+     */
+    public function posts()
+    {
+        return $this->hasMany(Post::class);
+    }
+
+    /**
+     * Relacionamento com likes de posts.
+     */
+    public function postLikes()
+    {
+        return $this->hasMany(PostLike::class);
+    }
+
+    /**
+     * Relacionamento com comentários.
+     */
+    public function comments()
+    {
+        return $this->hasMany(Comment::class);
+    }
+
+    /**
+     * Relacionamento com respostas de comentários.
+     */
+    public function commentReplies()
+    {
+        return $this->hasMany(CommentReply::class);
     }
 }

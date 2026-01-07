@@ -1,6 +1,10 @@
 <?php
 
 use App\Http\Controllers\AuthController;
+use App\Http\Controllers\CommentController;
+use App\Http\Controllers\CommentReplyController;
+use App\Http\Controllers\PostController;
+use App\Http\Controllers\PostLikeController;
 use App\Http\Controllers\UserController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
@@ -29,4 +33,45 @@ Route::middleware('auth:sanctum')
         Route::delete('/users/{id}', 'destroy');
         Route::post('/users/{id}/upload-banner', 'uploadBanner');
         Route::post('/users/{id}/upload-avatar', 'uploadAvatar');
+    });
+
+// Rotas de posts (públicas para leitura, mas verificam autenticação se houver token)
+Route::get('/posts', [PostController::class, 'index']);
+Route::get('/posts/{id}', [PostController::class, 'show']);
+
+// Rotas de posts (autenticadas)
+Route::middleware('auth:sanctum')
+    ->controller(PostController::class)
+    ->group(function () {
+        Route::post('/posts', 'store');
+        Route::put('/posts/{id}', 'update');
+        Route::patch('/posts/{id}', 'update');
+        Route::delete('/posts/{id}', 'destroy');
+        Route::post('/posts/{id}/media', 'uploadMedia');
+        Route::post('/posts/{id}/toggle-fixed', 'toggleFixed');
+        Route::post('/posts/{id}/toggle-status', 'toggleStatus');
+    });
+
+// Rotas de likes
+Route::middleware('auth:sanctum')
+    ->controller(PostLikeController::class)
+    ->group(function () {
+        Route::post('/posts/{id}/like', 'toggle');
+    });
+
+// Rotas de comentários
+Route::middleware('auth:sanctum')
+    ->controller(CommentController::class)
+    ->group(function () {
+        Route::get('/posts/{postId}/comments', 'index');
+        Route::post('/posts/{postId}/comments', 'store');
+        Route::delete('/comments/{id}', 'destroy');
+    });
+
+// Rotas de respostas de comentários
+Route::middleware('auth:sanctum')
+    ->controller(CommentReplyController::class)
+    ->group(function () {
+        Route::post('/comments/{commentId}/replies', 'store');
+        Route::delete('/comment-replies/{id}', 'destroy');
     });

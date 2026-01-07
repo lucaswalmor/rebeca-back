@@ -4,7 +4,6 @@ namespace App\Http\Controllers;
 
 use App\Models\User;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Validation\ValidationException;
 
@@ -13,7 +12,6 @@ class AuthController extends Controller
     /**
      * Realiza o login do usuário.
      *
-     * @param Request $request
      * @return \Illuminate\Http\JsonResponse
      */
     public function login(Request $request)
@@ -25,7 +23,7 @@ class AuthController extends Controller
 
         $user = User::where('email', $request->email)->first();
 
-        if (!$user || !Hash::check($request->password, $user->password)) {
+        if (! $user || ! Hash::check($request->password, $user->password)) {
             throw ValidationException::withMessages([
                 'email' => ['As credenciais fornecidas estão incorretas.'],
             ]);
@@ -45,9 +43,6 @@ class AuthController extends Controller
 
     /**
      * Prepara os dados do usuário para retorno.
-     *
-     * @param User $user
-     * @return array
      */
     private function prepareUserData(User $user): array
     {
@@ -55,8 +50,12 @@ class AuthController extends Controller
             // Admin: todos os campos menos created_at e updated_at
             $userData = $user->toArray();
             unset($userData['created_at'], $userData['updated_at']);
+
             return $userData;
         }
+
+        // Verificar se o usuário tem assinatura ativa
+        $assinaturaAtiva = $this->verificarAssinaturaAtiva($user);
 
         // Usuário normal: apenas campos específicos, resto como null
         return [
@@ -67,6 +66,7 @@ class AuthController extends Controller
             'email' => $user->email,
             'is_admin' => $user->is_admin,
             'apelido' => $user->apelido,
+            'assinatura' => $assinaturaAtiva,
             'data_nascimento' => null,
             'instagram' => null,
             'telegram' => null,
@@ -86,9 +86,23 @@ class AuthController extends Controller
     }
 
     /**
+     * Verifica se o usuário possui uma assinatura ativa.
+     */
+    private function verificarAssinaturaAtiva(User $user): bool
+    {
+        $hoje = now()->startOfDay();
+
+        $assinaturaAtiva = $user->assinaturas()
+            ->where('data_inicio', '<=', $hoje)
+            ->where('data_fim', '>=', $hoje)
+            ->exists();
+
+        return $assinaturaAtiva;
+    }
+
+    /**
      * Realiza o registro de um novo usuário.
      *
-     * @param Request $request
      * @return \Illuminate\Http\JsonResponse
      */
     public function register(Request $request)
@@ -108,8 +122,8 @@ class AuthController extends Controller
             return response()->json([
                 'message' => 'Este email já está cadastrado.',
                 'errors' => [
-                    'email' => ['Este email já está cadastrado.']
-                ]
+                    'email' => ['Este email já está cadastrado.'],
+                ],
             ], 422);
         }
 
@@ -133,14 +147,13 @@ class AuthController extends Controller
                 'sobrenome' => $user->sobrenome,
                 'apelido' => $user->apelido,
                 'email' => $user->email,
-            ]
+            ],
         ], 201);
     }
 
     /**
      * Realiza o logout do usuário.
      *
-     * @param Request $request
      * @return \Illuminate\Http\JsonResponse
      */
     public function logout(Request $request)
