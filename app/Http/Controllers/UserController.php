@@ -95,12 +95,6 @@ class UserController extends Controller
                     $query->where('status', 'ativo');
                 })
                 ->count(),
-            'outros' => \App\Models\Post::where('user_id', $user->id)
-                ->where('tipo_post', 3)
-                ->when(! $isAdmin, function ($query) {
-                    $query->where('status', 'ativo');
-                })
-                ->count(),
         ];
 
         $userData = $user->toArray();

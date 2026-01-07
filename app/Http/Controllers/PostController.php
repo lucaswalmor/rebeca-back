@@ -13,12 +13,11 @@ use Illuminate\Support\Facades\Storage;
 class PostController extends Controller
 {
     /**
-     * Display a listing of the resource.
+     * Display a listing of the resource (apenas posts ativos).
      */
     public function index(Request $request)
     {
-        // Tentar obter o usuário autenticado de múltiplas formas
-        // Primeiro tenta pelo request (funciona em rotas com middleware)
+        // Tentar obter o usuário autenticado (para verificar likes)
         $user = $request->user();
         
         // Se não encontrou, tenta pelo Auth (funciona mesmo em rotas públicas se houver token)
@@ -26,27 +25,22 @@ class PostController extends Controller
             $user = Auth::guard('sanctum')->user();
         }
         
-        $tipoPost = $request->query('tipo_post'); // 1=simples, 2=exclusivo, 3=outros
+        $tipoPost = $request->query('tipo_post'); // 1=simples, 2=exclusivo
+        $page = (int) $request->query('page', 1);
+        $perPage = (int) $request->query('per_page', 20);
 
-        $query = Post::with(['user', 'media', 'likes', 'comments.reply.user']);
-
-        // Se o usuário não for admin, mostrar apenas posts ativos
-        // Verificar se o usuário está autenticado e é admin
-        $isAdmin = false;
-        if ($user) {
-            $isAdmin = $user->isAdmin();
-        }
-        
-        if (! $isAdmin) {
-            $query->where('status', 'ativo');
-        }
+        $query = Post::with(['user', 'media', 'likes', 'comments.reply.user'])
+            ->where('status', 'ativo');
 
         if ($tipoPost) {
             $query->where('tipo_post', $tipoPost);
         }
 
+        $total = $query->count();
         $posts = $query->orderBy('is_fixed', 'desc')
             ->orderBy('created_at', 'desc')
+            ->skip(($page - 1) * $perPage)
+            ->take($perPage)
             ->get();
 
         $posts = $posts->map(function ($post) use ($user) {
@@ -98,6 +92,102 @@ class PostController extends Controller
 
         return response()->json([
             'data' => $posts,
+            'meta' => [
+                'current_page' => $page,
+                'per_page' => $perPage,
+                'total' => $total,
+                'last_page' => ceil($total / $perPage),
+                'has_more' => ($page * $perPage) < $total
+            ]
+        ]);
+    }
+
+    /**
+     * Display all posts (ativos e inativos) - apenas para admins.
+     */
+    public function indexAdmin(Request $request)
+    {
+        $user = $request->user();
+
+        if (! $user || ! $user->isAdmin()) {
+            return response()->json([
+                'message' => 'Acesso negado. Apenas administradores podem acessar esta rota.',
+            ], 403);
+        }
+
+        $tipoPost = $request->query('tipo_post'); // 1=simples, 2=exclusivo
+        $page = (int) $request->query('page', 1);
+        $perPage = (int) $request->query('per_page', 20);
+
+        $query = Post::with(['user', 'media', 'likes', 'comments.reply.user']);
+
+        if ($tipoPost) {
+            $query->where('tipo_post', $tipoPost);
+        }
+
+        $total = $query->count();
+        $posts = $query->orderBy('is_fixed', 'desc')
+            ->orderBy('created_at', 'desc')
+            ->skip(($page - 1) * $perPage)
+            ->take($perPage)
+            ->get();
+
+        $posts = $posts->map(function ($post) use ($user) {
+            $postData = $post->toArray();
+            $postData['isLiked'] = $user ? $post->is_liked : false;
+            $postData['likes'] = $post->likes_count;
+            $postData['comments_count'] = $post->comments->count();
+            $postData['media'] = $post->media->map(function ($media) {
+                return [
+                    'url' => $media->url,
+                    'tipo' => $media->tipo
+                ];
+            })->toArray();
+            // Manter compatibilidade com código antigo
+            $postData['image'] = $post->media->map(function ($media) {
+                return $media->url;
+            })->toArray();
+            $postData['date'] = $post->created_at->format('d/m/Y');
+            $postData['status'] = $post->status;
+            $postData['is_fixed'] = $post->is_fixed;
+            // Adicionar avatar e nome do usuário
+            if ($post->user) {
+                $postData['user_avatar'] = $post->user->path_img_avatar ?? 'https://primefaces.org/cdn/primevue/images/avatar/amyelsner.png';
+                $postData['user_name'] = $post->user->nome.' '.$post->user->sobrenome;
+                $postData['user_apelido'] = $post->user->apelido;
+            }
+            $postData['comments'] = $post->comments->map(function ($comment) {
+                $commentData = $comment->toArray();
+                $commentData['avatar'] = $comment->user->path_img_avatar ?? 'https://primefaces.org/cdn/primevue/images/avatar/amyelsner.png';
+                $commentData['name'] = $comment->user->nome.' '.$comment->user->sobrenome;
+                $commentData['timeAgo'] = $comment->time_ago;
+                $commentData['user_id'] = $comment->user_id;
+                if ($comment->reply) {
+                    $commentData['reply'] = [
+                        'id' => $comment->reply->id,
+                        'name' => $comment->reply->user->nome.' '.$comment->reply->user->sobrenome,
+                        'comment' => $comment->reply->reply,
+                        'createdAt' => $comment->reply->created_at->toISOString(),
+                        'timeAgo' => $comment->reply->time_ago,
+                        'user_id' => $comment->reply->user_id,
+                    ];
+                }
+
+                return $commentData;
+            });
+
+            return $postData;
+        });
+
+        return response()->json([
+            'data' => $posts,
+            'meta' => [
+                'current_page' => $page,
+                'per_page' => $perPage,
+                'total' => $total,
+                'last_page' => ceil($total / $perPage),
+                'has_more' => ($page * $perPage) < $total
+            ]
         ]);
     }
 
@@ -290,16 +380,18 @@ class PostController extends Controller
             ], 403);
         }
 
-        // Se está tentando fixar, verificar se já existem 3 posts fixos
+        // Se está tentando fixar, verificar se já existem 3 posts fixos do mesmo tipo
         if (! $post->is_fixed) {
             $fixedCount = Post::where('user_id', $post->user_id)
+                ->where('tipo_post', $post->tipo_post)
                 ->where('is_fixed', true)
                 ->where('id', '!=', $post->id)
                 ->count();
 
             if ($fixedCount >= 3) {
+                $tipoNome = $post->tipo_post == 1 ? 'simples' : 'exclusivos';
                 return response()->json([
-                    'message' => 'Você já possui 3 posts fixados. Desfixe um post antes de fixar outro.',
+                    'message' => "Você já possui 3 posts {$tipoNome} fixados. Desfixe um post antes de fixar outro.",
                 ], 422);
             }
         }

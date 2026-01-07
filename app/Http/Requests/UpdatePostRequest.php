@@ -35,7 +35,7 @@ class UpdatePostRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'tipo_post' => 'sometimes|integer|in:1,2,3',
+            'tipo_post' => 'sometimes|integer|in:1,2',
             'description' => 'sometimes|string',
         ];
     }
@@ -49,7 +49,7 @@ class UpdatePostRequest extends FormRequest
     {
         return [
             'tipo_post.integer' => 'O tipo do post deve ser um número inteiro.',
-            'tipo_post.in' => 'O tipo do post deve ser 1 (simples), 2 (exclusivo) ou 3 (outros).',
+            'tipo_post.in' => 'O tipo do post deve ser 1 (simples) ou 2 (exclusivo).',
         ];
     }
 }

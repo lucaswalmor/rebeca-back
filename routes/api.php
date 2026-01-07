@@ -35,7 +35,7 @@ Route::middleware('auth:sanctum')
         Route::post('/users/{id}/upload-avatar', 'uploadAvatar');
     });
 
-// Rotas de posts (públicas para leitura, mas verificam autenticação se houver token)
+// Rotas de posts (públicas para leitura - apenas posts ativos)
 Route::get('/posts', [PostController::class, 'index']);
 Route::get('/posts/{id}', [PostController::class, 'show']);
 
@@ -43,6 +43,7 @@ Route::get('/posts/{id}', [PostController::class, 'show']);
 Route::middleware('auth:sanctum')
     ->controller(PostController::class)
     ->group(function () {
+        Route::get('/posts/admin/all', 'indexAdmin'); // Rota para admins verem todos os posts (ativos e inativos)
         Route::post('/posts', 'store');
         Route::put('/posts/{id}', 'update');
         Route::patch('/posts/{id}', 'update');

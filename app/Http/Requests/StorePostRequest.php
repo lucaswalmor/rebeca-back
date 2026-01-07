@@ -22,7 +22,7 @@ class StorePostRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'tipo_post' => 'required|integer|in:1,2,3',
+            'tipo_post' => 'required|integer|in:1,2',
             'description' => 'required|string',
             'status' => 'sometimes|string|in:ativo,inativo',
         ];
@@ -38,7 +38,7 @@ class StorePostRequest extends FormRequest
         return [
             'tipo_post.required' => 'O tipo do post é obrigatório.',
             'tipo_post.integer' => 'O tipo do post deve ser um número inteiro.',
-            'tipo_post.in' => 'O tipo do post deve ser 1 (simples), 2 (exclusivo) ou 3 (outros).',
+            'tipo_post.in' => 'O tipo do post deve ser 1 (simples) ou 2 (exclusivo).',
             'description.required' => 'A descrição do post é obrigatória.',
         ];
     }
