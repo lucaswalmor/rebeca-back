@@ -31,6 +31,8 @@ class User extends Authenticatable
         'telegram',
         'whatsapp',
         'x_twitter',
+        'tiktok',
+        'facebook',
         'privacy',
         'sobre',
         'path_img_banner',

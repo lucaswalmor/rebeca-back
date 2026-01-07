@@ -26,6 +26,8 @@ return new class extends Migration
             $table->string('telegram')->nullable();
             $table->string('whatsapp')->nullable();
             $table->string('x_twitter')->nullable();
+            $table->string('tiktok')->nullable();
+            $table->string('facebook')->nullable();
             $table->text('privacy')->nullable();
             $table->text('sobre')->nullable();
             $table->string('path_img_banner')->nullable();

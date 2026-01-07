@@ -72,6 +72,8 @@ class AuthController extends Controller
             'telegram' => null,
             'whatsapp' => null,
             'x_twitter' => null,
+            'tiktok' => null,
+            'facebook' => null,
             'privacy' => null,
             'sobre' => null,
             'valor_assinatura_mensal' => null,
@@ -81,6 +83,58 @@ class AuthController extends Controller
             'valor_desconto_semestral' => null,
             'email_verified_at' => null,
         ];
+    }
+
+    /**
+     * Realiza o registro de um novo usuário.
+     *
+     * @param Request $request
+     * @return \Illuminate\Http\JsonResponse
+     */
+    public function register(Request $request)
+    {
+        $request->validate([
+            'nome' => 'required|string|max:255',
+            'sobrenome' => 'required|string|max:255',
+            'apelido' => 'required|string|max:255',
+            'email' => 'required|string|email|max:255|unique:users',
+            'password' => 'required|string|min:6',
+            'telefone' => 'required|string|max:20',
+            'data_nascimento' => 'required|date',
+        ]);
+
+        // Verificar se email já existe
+        if (User::where('email', $request->email)->exists()) {
+            return response()->json([
+                'message' => 'Este email já está cadastrado.',
+                'errors' => [
+                    'email' => ['Este email já está cadastrado.']
+                ]
+            ], 422);
+        }
+
+        // Criar usuário
+        $user = User::create([
+            'nome' => $request->nome,
+            'sobrenome' => $request->sobrenome,
+            'apelido' => $request->apelido,
+            'email' => $request->email,
+            'password' => Hash::make($request->password),
+            'telefone' => $request->telefone,
+            'data_nascimento' => $request->data_nascimento,
+            'is_admin' => false,
+        ]);
+
+        return response()->json([
+            'message' => 'Usuário criado com sucesso.',
+            'user' => [
+                'id' => $user->id,
+                'nome' => $user->nome,
+                'sobrenome' => $user->sobrenome,
+                'apelido' => $user->apelido,
+                'email' => $user->email,
+            ]
+        ], 201);
     }
 
     /**
