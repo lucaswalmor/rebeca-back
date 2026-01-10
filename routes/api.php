@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\AssinaturaController;
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\CommentController;
 use App\Http\Controllers\CommentReplyController;
@@ -76,3 +77,20 @@ Route::middleware('auth:sanctum')
         Route::post('/comments/{commentId}/replies', 'store');
         Route::delete('/comment-replies/{id}', 'destroy');
     });
+
+// Rotas de assinaturas
+Route::middleware('auth:sanctum')
+    ->controller(AssinaturaController::class)
+    ->group(function () {
+        Route::post('/assinaturas/gerar-link-pagamento', 'gerarLinkPagamento');
+        Route::post('/assinaturas/consultar-status', 'consultarStatus');
+        Route::post('/assinaturas/processar-checkout-success', 'processarCheckoutSuccess');
+        Route::get('/assinaturas/minhas-assinaturas', 'minhasAssinaturas');
+    });
+
+// Webhook da InfinitePay (rota pública, sem autenticação)
+Route::post('/webhooks/infinitepay', [AssinaturaController::class, 'webhookHandler']);
+
+// Rota de teste (remover em produção)
+Route::post('/assinaturas/testar-api', [AssinaturaController::class, 'testarApiInfinitePay']);
+Route::post('/assinaturas/debug', [AssinaturaController::class, 'debugDados']);

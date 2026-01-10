@@ -50,13 +50,13 @@ class PostController extends Controller
             $postData['comments_count'] = $post->comments->count();
             $postData['media'] = $post->media->map(function ($media) {
                 return [
-                    'url' => $media->url,
+                    'url' => env('AWS_URL') . '/' . $media->path,
                     'tipo' => $media->tipo
                 ];
             })->toArray();
             // Manter compatibilidade com código antigo
             $postData['image'] = $post->media->map(function ($media) {
-                return $media->url;
+                return env('AWS_URL') . '/' . $media->path;
             })->toArray();
             $postData['date'] = $post->created_at->format('d/m/Y');
             $postData['status'] = $post->status;
@@ -139,7 +139,7 @@ class PostController extends Controller
             $postData['comments_count'] = $post->comments->count();
             $postData['media'] = $post->media->map(function ($media) {
                 return [
-                    'url' => $media->url,
+                    'url' => env('AWS_URL') . '/' . $media->path,
                     'tipo' => $media->tipo
                 ];
             })->toArray();
@@ -200,7 +200,6 @@ class PostController extends Controller
         $validated['user_id'] = $request->user()->id;
         $validated['status'] = $validated['status'] ?? 'ativo';
         $validated['is_fixed'] = false;
-
         $post = Post::create($validated);
 
         return response()->json([

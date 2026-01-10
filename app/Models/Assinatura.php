@@ -17,6 +17,18 @@ class Assinatura extends Model
         'data_inicio',
         'data_fim',
         'tipo_assinatura',
+        'status',
+        'order_nsu',
+        'link_pagamento',
+        'valor',
+        'plano',
+        'transaction_nsu',
+        'invoice_slug',
+        'receipt_url',
+        'paid_amount',
+        'installments',
+        'capture_method',
+        'payment_date',
     ];
 
     /**
@@ -29,6 +41,9 @@ class Assinatura extends Model
         return [
             'data_inicio' => 'date',
             'data_fim' => 'date',
+            'valor' => 'decimal:2',
+            'paid_amount' => 'decimal:2',
+            'payment_date' => 'datetime',
         ];
     }
 

@@ -57,6 +57,9 @@ class AuthController extends Controller
         // Verificar se o usuário tem assinatura ativa
         $assinaturaAtiva = $this->verificarAssinaturaAtiva($user);
 
+        // Obter status detalhado da assinatura
+        $statusAssinatura = $this->obterStatusAssinatura($user);
+
         // Usuário normal: apenas campos específicos, resto como null
         return [
             'id' => $user->id,
@@ -67,21 +70,7 @@ class AuthController extends Controller
             'is_admin' => $user->is_admin,
             'apelido' => $user->apelido,
             'assinatura' => $assinaturaAtiva,
-            'data_nascimento' => null,
-            'instagram' => null,
-            'telegram' => null,
-            'whatsapp' => null,
-            'x_twitter' => null,
-            'tiktok' => null,
-            'facebook' => null,
-            'privacy' => null,
-            'sobre' => null,
-            'valor_assinatura_mensal' => null,
-            'valor_assinatura_trimestral' => null,
-            'valor_assinatura_semestral' => null,
-            'valor_desconto_trimestral' => null,
-            'valor_desconto_semestral' => null,
-            'email_verified_at' => null,
+            'status_assinatura' => $statusAssinatura,
         ];
     }
 
@@ -98,6 +87,38 @@ class AuthController extends Controller
             ->exists();
 
         return $assinaturaAtiva;
+    }
+
+    /**
+     * Obtém o status detalhado da assinatura do usuário.
+     */
+    private function obterStatusAssinatura(User $user): string
+    {
+        $hoje = now()->startOfDay();
+
+        // Buscar a assinatura mais recente aprovada
+        $assinatura = $user->assinaturas()
+            ->where('status', 'aprovado')
+            ->orderBy('data_fim', 'desc')
+            ->first();
+
+        if (!$assinatura) {
+            return 'Sem Assinatura';
+        }
+
+        $dataFim = $assinatura->data_fim->startOfDay();
+        $diasRestantes = $hoje->diffInDays($dataFim, false);
+
+        if ($dataFim < $hoje) {
+            // Assinatura vencida
+            return 'Assinatura Vencida';
+        } elseif ($diasRestantes <= 5) {
+            // Assinatura à vencer (5 dias ou menos)
+            return 'Assinatura À Vencer';
+        } else {
+            // Assinatura ativa
+            return 'Assinatura Ativa';
+        }
     }
 
     /**
