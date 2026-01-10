@@ -39,33 +39,33 @@ class Comment extends Model
     {
         $carbon = Carbon::parse($date);
         $now = Carbon::now();
-        $diff = $carbon->diffInMinutes($now);
-
+        $diff = (int) $carbon->diffInMinutes($now); // Converte para inteiro
+    
         if ($diff < 1) {
             return 'Agora';
         }
-
+    
         if ($diff < 60) {
             return $diff.' Min';
         }
-
-        $diffHours = $carbon->diffInHours($now);
+    
+        $diffHours = (int) $carbon->diffInHours($now);
         if ($diffHours < 24) {
             return $diffHours.' H';
         }
-
-        $diffDays = $carbon->diffInDays($now);
+    
+        $diffDays = (int) $carbon->diffInDays($now);
         if ($diffDays < 30) {
             return $diffDays.' Dia'.($diffDays > 1 ? 's' : '');
         }
-
-        $diffMonths = $carbon->diffInMonths($now);
+    
+        $diffMonths = (int) $carbon->diffInMonths($now);
         if ($diffMonths < 12) {
             return $diffMonths.' Mês'.($diffMonths > 1 ? 'es' : '');
         }
-
-        $diffYears = $carbon->diffInYears($now);
-
+    
+        $diffYears = (int) $carbon->diffInYears($now);
+    
         return $diffYears.' Ano'.($diffYears > 1 ? 's' : '');
     }
 }

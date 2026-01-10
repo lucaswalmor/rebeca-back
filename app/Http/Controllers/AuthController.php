@@ -58,7 +58,10 @@ class AuthController extends Controller
         $assinaturaAtiva = $this->verificarAssinaturaAtiva($user);
 
         // Obter status detalhado da assinatura
-        $statusAssinatura = $this->obterStatusAssinatura($user);
+        $statusAssinaturaDescricao = $this->obterStatusAssinatura($user);
+
+        // Obter status real da assinatura (da tabela)
+        $statusAssinaturaReal = $this->obterStatusRealAssinatura($user);
 
         // Usuário normal: apenas campos específicos, resto como null
         return [
@@ -70,7 +73,8 @@ class AuthController extends Controller
             'is_admin' => $user->is_admin,
             'apelido' => $user->apelido,
             'assinatura' => $assinaturaAtiva,
-            'status_assinatura' => $statusAssinatura,
+            'status_assinatura_descricao' => $statusAssinaturaDescricao,
+            'status_assinatura' => $statusAssinaturaReal,
         ];
     }
 
@@ -90,23 +94,46 @@ class AuthController extends Controller
     }
 
     /**
+     * Obtém o status real da assinatura do usuário (da tabela).
+     */
+    private function obterStatusRealAssinatura(User $user): string
+    {
+        // Buscar a assinatura mais recente
+        $assinatura = $user->assinaturas()
+            ->orderBy('created_at', 'desc')
+            ->first();
+
+        return $assinatura ? $assinatura->status : 'sem_assinatura';
+    }
+
+    /**
      * Obtém o status detalhado da assinatura do usuário.
      */
     private function obterStatusAssinatura(User $user): string
     {
         $hoje = now()->startOfDay();
 
-        // Buscar a assinatura mais recente aprovada
-        $assinatura = $user->assinaturas()
+        // Primeiro, verificar se há assinaturas pendentes (mais prioritárias)
+        $assinaturaPendente = $user->assinaturas()
+            ->where('status', 'pendente')
+            ->orderBy('created_at', 'desc')
+            ->first();
+
+        if ($assinaturaPendente) {
+            return 'Assinatura Pendente';
+        }
+
+        // Se não há pendentes, verificar assinaturas aprovadas
+        $assinaturaAprovada = $user->assinaturas()
             ->where('status', 'aprovado')
             ->orderBy('data_fim', 'desc')
             ->first();
 
-        if (!$assinatura) {
+        if (!$assinaturaAprovada) {
             return 'Sem Assinatura';
         }
 
-        $dataFim = $assinatura->data_fim->startOfDay();
+        $dataFim = $assinaturaAprovada->data_fim->startOfDay();
         $diasRestantes = $hoje->diffInDays($dataFim, false);
 
         if ($dataFim < $hoje) {

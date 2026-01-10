@@ -26,6 +26,29 @@ class AssinaturaController extends Controller
         ]);
 
         try {
+            // Verificar se já existe uma assinatura pendente para este usuário e plano
+            $assinaturaExistente = Assinatura::where('user_id', Auth::id())
+                ->where('status', 'pendente')
+                ->where('plano', $request->plano)
+                ->first();
+
+            if ($assinaturaExistente && $assinaturaExistente->link_pagamento) {
+                // Já existe uma assinatura pendente com link, reutilizar
+                Log::info('Reutilizando assinatura pendente existente:', [
+                    'assinatura_id' => $assinaturaExistente->id,
+                    'plano' => $request->plano,
+                    'link_pagamento' => $assinaturaExistente->link_pagamento
+                ]);
+
+                return response()->json([
+                    'success' => true,
+                    'link' => $assinaturaExistente->link_pagamento,
+                    'assinatura_id' => $assinaturaExistente->id,
+                    'order_nsu' => $assinaturaExistente->order_nsu,
+                    'reutilizado' => true
+                ]);
+            }
+
             // Definir datas baseado no plano
             $dataInicio = now();
             $tipoAssinatura = 'mensal'; // padrão
