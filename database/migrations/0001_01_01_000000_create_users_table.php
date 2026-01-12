@@ -11,6 +11,7 @@ return new class extends Migration
      */
     public function up(): void
     {
+        // usuarios
         Schema::create('users', function (Blueprint $table) {
             $table->id();
             $table->boolean('is_admin')->default(false);
