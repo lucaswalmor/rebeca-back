@@ -63,7 +63,7 @@ class AuthController extends Controller
         // Obter status real da assinatura (da tabela)
         $statusAssinaturaReal = $this->obterStatusRealAssinatura($user);
 
-        // Usuário normal: apenas campos específicos, resto como null
+        // Usuário normal: apenas campos específicos, resto como nulll
         return [
             'id' => $user->id,
             'nome' => $user->nome,
