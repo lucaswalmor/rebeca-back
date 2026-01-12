@@ -10,7 +10,7 @@ use Illuminate\Support\Facades\Hash;
 class AdminUserSeeder extends Seeder
 {
     /**
-     * Run the database seeds.
+     * Run the database seeds.s
      */
     public function run(): void
     {
