@@ -20,7 +20,7 @@ class UserSeeder extends Seeder
                 'nome' => 'Lucas',
                 'sobrenome' => 'Steinbach',
                 'apelido' => 'lulu',
-                'email' => 'lucaswsb52@gmail.com',
+                'email' => 'lucaswsb522@gmail.com',
                 'password' => Hash::make('32329585'),
                 'telefone' => '34992021394',
                 'data_nascimento' => '1993-11-21',
