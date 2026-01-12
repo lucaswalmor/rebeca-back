@@ -61,7 +61,7 @@ class PostController extends Controller
             $postData['date'] = $post->created_at->format('d/m/Y');
             $postData['status'] = $post->status;
             $postData['is_fixed'] = $post->is_fixed;
-            // Adicionar avatar e nome do usuário
+            // Adicionar avatar e nome do usuárioa
             if ($post->user) {
                 $postData['user_avatar'] = $post->user->path_img_avatar ?? 'https://primefaces.org/cdn/primevue/images/avatar/amyelsner.png';
                 $postData['user_name'] = $post->user->nome.' '.$post->user->sobrenome;

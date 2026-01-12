@@ -210,7 +210,7 @@ class UserController extends Controller
     }
 
     /**
-     * Upload de avatar do usuário
+     * Upload de avatar do usuárior
      */
     public function uploadAvatar(Request $request, string $id)
     {
