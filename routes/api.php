@@ -23,18 +23,16 @@ Route::get('/user', function (Request $request) {
 Route::get('/users/apelido/{apelido}', [UserController::class, 'findByApelido']);
 
 // Rotas de usuários
-Route::middleware('auth:sanctum')
-    ->controller(UserController::class)
-    ->group(function () {
-        Route::get('/users', 'index');
-        Route::post('/users', 'store');
-        Route::get('/users/{id}', 'show');
-        Route::put('/users/{id}', 'update');
-        Route::patch('/users/{id}', 'update');
-        Route::delete('/users/{id}', 'destroy');
-        Route::post('/users/{id}/upload-banner', 'uploadBanner');
-        Route::post('/users/{id}/upload-avatar', 'uploadAvatar');
-    });
+Route::middleware('auth:sanctum')->group(function () {
+    Route::get('/users', [UserController::class, 'index']);
+    Route::post('/users', [UserController::class, 'store']);
+    Route::get('/users/{id}', [UserController::class, 'show']);
+    Route::put('/users/{id}', [UserController::class, 'update']);
+    Route::patch('/users/{id}', [UserController::class, 'update']);
+    Route::delete('/users/{id}', [UserController::class, 'destroy']);
+    Route::post('/users/{id}/upload-banner', [UserController::class, 'uploadBanner']);
+    Route::post('/users/{id}/upload-avatar', [UserController::class, 'uploadAvatar']);
+});
 
 // Rotas de posts (públicas para leitura - apenas posts ativos)
 Route::get('/posts', [PostController::class, 'index']);
