@@ -98,8 +98,8 @@ class UserController extends Controller
         ];
 
         $userData = $user->toArray();
-        $userData['path_img_banner'] = env('AWS_URL') . '/' . $user->path_img_banner;
-        $userData['path_img_avatar'] = env('AWS_URL') . '/' . $user->path_img_avatar;
+        $userData['path_img_banner'] = env('AWS_URL') . $user->path_img_banner;
+        $userData['path_img_avatar'] = env('AWS_URL') . $user->path_img_avatar;
         $userData['posts_count'] = $postsCount;
 
         return response()->json([
