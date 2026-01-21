@@ -95,10 +95,8 @@ class AssinaturaController extends Controller
             // Preparar payload para a API da InfinitePay
             $payload = [
                 'handle' => 'rehantunes06',
-                // 'redirect_url' => 'http://192.168.100.223:8080/checkout/success',
                 'redirect_url' => 'https://becalima007.vercel.app/checkout/success',
                 'webhook_url' => 'https://rebeca.lksoftware.com.br/public/api/webhooks/infinitepay', // URL do webhook para notificações
-                // 'webhook_url' => url('/api/webhooks/infinitepay'), // URL do webhook para notificações
                 'order_nsu' => $orderNsu,
                 'items' => [
                     [
@@ -249,7 +247,6 @@ class AssinaturaController extends Controller
         try {
             $payload = [
                 'handle' => 'rehantunes06',
-                // 'redirect_url' => 'http://192.168.100.223:8080/checkout/success',
                 'redirect_url' => 'https://becalima007.vercel.app/checkout/success',
                 'webhook_url' => 'https://rebeca.lksoftware.com.br/public/api/webhooks/infinitepay', // URL do webhook para notificações
                 'order_nsu' => 'test-'.time(),
