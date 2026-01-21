@@ -63,7 +63,7 @@ class PostController extends Controller
             $postData['is_fixed'] = $post->is_fixed;
             // Adicionar avatar e nome do usuárioa
             if ($post->user) {
-                $postData['user_avatar'] = env('AWS_URL') . $post->user->path_img_avatar ?? 'https://primefaces.org/cdn/primevue/images/avatar/amyelsner.png';
+                $postData['user_avatar'] = $post->user->path_img_avatar ?? 'https://primefaces.org/cdn/primevue/images/avatar/amyelsner.png';
                 $postData['user_name'] = $post->user->nome.' '.$post->user->sobrenome;
                 $postData['user_apelido'] = $post->user->apelido;
             }
