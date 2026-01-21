@@ -316,7 +316,7 @@ class PostController extends Controller
         }
 
         $request->validate([
-            'media.*' => 'required|file|mimes:jpeg,jpg,png,gif,webp,mp4,webm,mov|max:102400', // 10MB max
+            'media.*' => 'required|file|mimes:jpeg,jpg,png,gif,webp,mp4,webm,mov|max:512000', // 500MB max
         ]);
 
         $uploadedMedia = [];
