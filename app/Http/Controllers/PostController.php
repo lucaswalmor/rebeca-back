@@ -307,7 +307,7 @@ class PostController extends Controller
     public function uploadMedia(Request $request, string $id)
     {
         $post = Post::findOrFail($id);
-        $user = $request->user();
+        $user = Auth::user();
 
         if (! $user->isAdmin() && $post->user_id !== $user->id) {
             return response()->json([
