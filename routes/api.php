@@ -37,6 +37,7 @@ Route::middleware('auth:sanctum')->group(function () {
 // Rotas de posts (públicas para leitura - apenas posts ativos)
 Route::get('/posts', [PostController::class, 'index']);
 Route::get('/posts/{id}', [PostController::class, 'show']);
+Route::get('/posts/{id}/like-status', [PostController::class, 'getLikeStatus']);
 
 // Rotas de posts (autenticadas)
 Route::middleware('auth:sanctum')

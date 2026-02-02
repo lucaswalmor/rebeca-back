@@ -51,11 +51,18 @@ class Post extends Model
 
     public function getIsLikedAttribute(): bool
     {
-        if (! request()->user()) {
+        $user = request()->user();
+
+        // Se não encontrou via request()->user(), tentar via Auth guard (para rotas públicas)
+        if (! $user && request()->bearerToken()) {
+            $user = \Illuminate\Support\Facades\Auth::guard('sanctum')->user();
+        }
+
+        if (! $user) {
             return false;
         }
 
-        return $this->likes()->where('user_id', request()->user()->id)->exists();
+        return $this->likes()->where('user_id', $user->id)->exists();
     }
 
     public function getLikesCountAttribute(): int

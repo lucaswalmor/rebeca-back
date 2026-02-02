@@ -425,4 +425,25 @@ class PostController extends Controller
             'data' => $post->fresh(),
         ]);
     }
+
+    /**
+     * Get the like status for a specific post
+     */
+    public function getLikeStatus(string $id, Request $request)
+    {
+        $post = Post::findOrFail($id);
+
+        // Tentar obter o usuário autenticado
+        $user = $request->user();
+
+        // Se não encontrou, tenta pelo Auth guard
+        if (! $user && $request->bearerToken()) {
+            $user = \Illuminate\Support\Facades\Auth::guard('sanctum')->user();
+        }
+
+        return response()->json([
+            'isLiked' => $user ? $post->is_liked : false,
+            'likes_count' => $post->likes_count,
+        ]);
+    }
 }
