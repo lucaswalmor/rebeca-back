@@ -32,7 +32,7 @@ class CommentReplyController extends Controller
 
         $replyData = [
             'id' => $reply->id,
-            'name' => $reply->user->nome.' '.$reply->user->sobrenome,
+            'name' => $reply->user->apelido ?: 'usuario-'.$reply->user_id,
             'comment' => $reply->reply,
             'createdAt' => $reply->created_at->toISOString(),
             'timeAgo' => $reply->time_ago,

@@ -22,13 +22,13 @@ class CommentController extends Controller
         $comments = $comments->map(function ($comment) {
             $commentData = $comment->toArray();
             $commentData['avatar'] = $comment->user->path_img_avatar ?? 'https://primefaces.org/cdn/primevue/images/avatar/amyelsner.png';
-            $commentData['name'] = $comment->user->nome.' '.$comment->user->sobrenome;
+            $commentData['name'] = $comment->user->apelido ?: 'usuario-'.$comment->user_id;
             $commentData['timeAgo'] = $comment->time_ago;
             $commentData['user_id'] = $comment->user_id;
             if ($comment->reply) {
                 $commentData['reply'] = [
                     'id' => $comment->reply->id,
-                    'name' => $comment->reply->user->nome.' '.$comment->reply->user->sobrenome,
+                    'name' => $comment->reply->user->apelido ?: 'usuario-'.$comment->reply->user_id,
                     'comment' => $comment->reply->reply,
                     'createdAt' => $comment->reply->created_at->toISOString(),
                     'timeAgo' => $comment->reply->time_ago,
@@ -61,7 +61,7 @@ class CommentController extends Controller
 
         $commentData = $comment->toArray();
         $commentData['avatar'] = $comment->user->path_img_avatar ?? 'https://primefaces.org/cdn/primevue/images/avatar/amyelsner.png';
-        $commentData['name'] = $comment->user->nome.' '.$comment->user->sobrenome;
+        $commentData['name'] = $comment->user->apelido ?: 'usuario-'.$comment->user_id;
         $commentData['timeAgo'] = $comment->time_ago;
         $commentData['user_id'] = $comment->user_id;
 
