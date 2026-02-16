@@ -90,9 +90,9 @@ class ChatEnqueteController extends Controller
         $votedPercentage = $totalUsers > 0 ? round(($votedUsers / $totalUsers) * 100, 1) : 0;
         $notVotedPercentage = $totalUsers > 0 ? round(($notVotedUsers / $totalUsers) * 100, 1) : 0;
 
-        // Contar votos positivos e negativos
-        $positiveVotes = $users->where('chat_enquete_voted', true)->count();
-        $negativeVotes = $users->where('chat_enquete_voted', false)->count();
+        // Contar votos positivos e negativos (apenas usuários que votaram)
+        $positiveVotes = $users->whereNotNull('chat_enquete_voted')->where('chat_enquete_voted', 1)->count();
+        $negativeVotes = $users->whereNotNull('chat_enquete_voted')->where('chat_enquete_voted', 0)->count();
 
         // Preparar lista de usuários formatada
         $usersList = $users->map(function ($user) {
