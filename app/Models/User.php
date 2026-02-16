@@ -42,6 +42,7 @@ class User extends Authenticatable
         'valor_assinatura_semestral',
         'valor_desconto_trimestral',
         'valor_desconto_semestral',
+        'chat_enquete_voted',
     ];
 
     /**
