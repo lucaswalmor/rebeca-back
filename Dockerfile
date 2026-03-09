@@ -27,4 +27,8 @@ RUN chown -R www-data:www-data /var/www/storage /var/www/bootstrap/cache
 COPY docker/nginx.conf /etc/nginx/sites-available/default
 
 EXPOSE 80
-CMD php-fpm -D && nginx -g "daemon off;"
+CMD php artisan config:clear && \
+    php artisan key:generate --force && \
+    php artisan migrate --force && \
+    php-fpm -D && \
+    nginx -g "daemon off;"
