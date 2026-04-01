@@ -11,6 +11,12 @@ use App\Http\Controllers\UserController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 
+Route::get('/', function () {
+    return response()->json([
+        'message' => 'API is running'
+    ]);
+});
+
 // Rotas de autenticação
 Route::post('/login', [AuthController::class, 'login']);
 Route::post('/register', [AuthController::class, 'register']);
