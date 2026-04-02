@@ -8,6 +8,7 @@ use App\Models\Post;
 use App\Models\PostMedia;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 
 class PostController extends Controller
@@ -144,7 +145,7 @@ class PostController extends Controller
             })->toArray();
             // Manter compatibilidade com código antigo
             $postData['image'] = $post->media->map(function ($media) {
-                return $media->url;
+                return env('AWS_URL') . '/' . $media->path;
             })->toArray();
             $postData['date'] = $post->created_at->format('d/m/Y');
             $postData['status'] = $post->status;
@@ -221,7 +222,7 @@ class PostController extends Controller
         $postData['likes'] = $post->likes_count;
         $postData['comments_count'] = $post->comments->count();
         $postData['image'] = $post->media->map(function ($media) {
-            return $media->url;
+            return env('AWS_URL') . '/' . $media->path;
         })->toArray();
         $postData['date'] = $post->created_at->format('d/m/Y');
         $postData['status'] = $post->status;
@@ -308,6 +309,12 @@ class PostController extends Controller
         $post = Post::findOrFail($id);
         $user = Auth::user();
 
+        Log::info('post_media_upload_started', [
+            'post_id' => $post->id,
+            'user_id' => $user?->id,
+            'files_count' => count($request->file('media', [])),
+        ]);
+
         if (! $user->isAdmin() && $post->user_id !== $user->id) {
             return response()->json([
                 'message' => 'Você não tem permissão para adicionar mídia a este post.',
@@ -326,7 +333,34 @@ class PostController extends Controller
             $extension = $file->getClientOriginalExtension();
             $tipo = in_array($extension, ['mp4', 'webm', 'mov']) ? 'video' : 'image';
             $path = "posts/{$post->id}/media/".time().'_'.$ordem.'_'.$file->getClientOriginalName();
-            Storage::disk('s3')->put($path, file_get_contents($file), 'public');
+            Log::info('post_media_upload_file_started', [
+                'post_id' => $post->id,
+                'path' => $path,
+                'file_name' => $file->getClientOriginalName(),
+                'file_size' => $file->getSize(),
+                'mime_type' => $file->getMimeType(),
+                'disk' => 's3',
+                'bucket' => config('filesystems.disks.s3.bucket'),
+                'endpoint' => config('filesystems.disks.s3.endpoint'),
+            ]);
+
+            try {
+                $uploaded = Storage::disk('s3')->put($path, file_get_contents($file), 'public');
+            } catch (\Throwable $e) {
+                Log::error('post_media_upload_exception', [
+                    'post_id' => $post->id,
+                    'path' => $path,
+                    'message' => $e->getMessage(),
+                ]);
+
+                throw $e;
+            }
+
+            Log::info('post_media_upload_file_result', [
+                'post_id' => $post->id,
+                'path' => $path,
+                'uploaded' => $uploaded,
+            ]);
 
             // Salvar apenas o path relativo no banco (sem URL completa)
             $media = PostMedia::create([
@@ -357,6 +391,11 @@ class PostController extends Controller
                 'tipo' => $tipo,
             ];
         }
+
+        Log::info('post_media_upload_finished', [
+            'post_id' => $post->id,
+            'uploaded_count' => count($uploadedMedia),
+        ]);
 
         return response()->json([
             'message' => 'Mídia enviada com sucesso.',
