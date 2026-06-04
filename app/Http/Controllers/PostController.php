@@ -346,6 +346,14 @@ class PostController extends Controller
 
             try {
                 $uploaded = Storage::disk('s3')->put($path, file_get_contents($file), 'public');
+                if (!$uploaded) {
+                    Log::error('post_media_upload_false', [
+                        'post_id' => $post->id,
+                        'path' => $path,
+                        'disk_config' => config('filesystems.disks.s3'),
+                    ]);
+                    throw new \Exception('Storage::put retornou false');
+                }
             } catch (\Throwable $e) {
                 Log::error('post_media_upload_exception', [
                     'post_id' => $post->id,
