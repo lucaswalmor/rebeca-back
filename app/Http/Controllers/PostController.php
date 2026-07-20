@@ -6,6 +6,7 @@ use App\Http\Requests\StorePostRequest;
 use App\Http\Requests\UpdatePostRequest;
 use App\Models\Post;
 use App\Models\PostMedia;
+use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Log;
@@ -18,24 +19,13 @@ class PostController extends Controller
      */
     public function index(Request $request)
     {
-        // Tentar obter o usuário autenticado (para verificar likes)
-        $user = $request->user();
-        
-        // Se não encontrou, tenta pelo Auth (funciona mesmo em rotas públicas se houver token)
-        if (! $user && $request->bearerToken()) {
-            $user = Auth::guard('sanctum')->user();
-        }
-        
-        $tipoPost = $request->query('tipo_post'); // 1=simples, 2=exclusivo
+        $user = $this->resolveUser($request);
+
         $page = (int) $request->query('page', 1);
         $perPage = (int) $request->query('per_page', 20);
 
         $query = Post::with(['user', 'media', 'likes', 'comments.reply.user'])
             ->where('status', 'ativo');
-
-        if ($tipoPost) {
-            $query->where('tipo_post', $tipoPost);
-        }
 
         $total = $query->count();
         $posts = $query->orderBy('is_fixed', 'desc')
@@ -44,50 +34,10 @@ class PostController extends Controller
             ->take($perPage)
             ->get();
 
-        $posts = $posts->map(function ($post) use ($user) {
-            $postData = $post->toArray();
-            $postData['isLiked'] = $user ? $post->is_liked : false;
-            $postData['likes'] = $post->likes_count;
-            $postData['comments_count'] = $post->comments->count();
-            $postData['media'] = $post->media->map(function ($media) {
-                return [
-                    'url' => env('AWS_URL') . '/' . $media->path,
-                    'tipo' => $media->tipo
-                ];
-            })->toArray();
-            // Manter compatibilidade com código antigo
-            $postData['image'] = $post->media->map(function ($media) {
-                return env('AWS_URL') . '/' . $media->path;
-            })->toArray();
-            $postData['date'] = $post->created_at->format('d/m/Y');
-            $postData['status'] = $post->status;
-            $postData['is_fixed'] = $post->is_fixed;
-            // Adicionar avatar e nome do usuárioa
-            if ($post->user) {
-                $postData['user_avatar'] = $post->user->path_img_avatar ?? 'https://primefaces.org/cdn/primevue/images/avatar/amyelsner.png';
-                $postData['user_name'] = $post->user->nome.' '.$post->user->sobrenome;
-                $postData['user_apelido'] = $post->user->apelido;
-            }
-            $postData['comments'] = $post->comments->map(function ($comment) {
-                $commentData = $comment->toArray();
-                $commentData['name'] = $comment->user->apelido;
-                $commentData['timeAgo'] = $comment->time_ago;
-                $commentData['user_id'] = $comment->user_id;
-                if ($comment->reply) {
-                    $commentData['reply'] = [
-                        'id' => $comment->reply->id,
-                        'name' => $comment->reply->user->nome.' '.$comment->reply->user->sobrenome,
-                        'comment' => $comment->reply->reply,
-                        'createdAt' => $comment->reply->created_at->toISOString(),
-                        'timeAgo' => $comment->reply->time_ago,
-                        'user_id' => $comment->reply->user_id,
-                    ];  
-                }
+        $canAccess = $this->userCanAccessFullContent($user);
 
-                return $commentData;
-            });
-
-            return $postData;
+        $posts = $posts->map(function ($post) use ($user, $canAccess) {
+            return $this->formatPostData($post, $user, $canAccess);
         });
 
         return response()->json([
@@ -97,8 +47,8 @@ class PostController extends Controller
                 'per_page' => $perPage,
                 'total' => $total,
                 'last_page' => ceil($total / $perPage),
-                'has_more' => ($page * $perPage) < $total
-            ]
+                'has_more' => ($page * $perPage) < $total,
+            ],
         ]);
     }
 
@@ -115,15 +65,10 @@ class PostController extends Controller
             ], 403);
         }
 
-        $tipoPost = $request->query('tipo_post'); // 1=simples, 2=exclusivo
         $page = (int) $request->query('page', 1);
         $perPage = (int) $request->query('per_page', 20);
 
         $query = Post::with(['user', 'media', 'likes', 'comments.reply.user']);
-
-        if ($tipoPost) {
-            $query->where('tipo_post', $tipoPost);
-        }
 
         $total = $query->count();
         $posts = $query->orderBy('is_fixed', 'desc')
@@ -133,50 +78,7 @@ class PostController extends Controller
             ->get();
 
         $posts = $posts->map(function ($post) use ($user) {
-            $postData = $post->toArray();
-            $postData['isLiked'] = $user ? $post->is_liked : false;
-            $postData['likes'] = $post->likes_count;
-            $postData['comments_count'] = $post->comments->count();
-            $postData['media'] = $post->media->map(function ($media) {
-                return [
-                    'url' => env('AWS_URL') . '/' . $media->path,
-                    'tipo' => $media->tipo
-                ];
-            })->toArray();
-            // Manter compatibilidade com código antigo
-            $postData['image'] = $post->media->map(function ($media) {
-                return env('AWS_URL') . '/' . $media->path;
-            })->toArray();
-            $postData['date'] = $post->created_at->format('d/m/Y');
-            $postData['status'] = $post->status;
-            $postData['is_fixed'] = $post->is_fixed;
-            // Adicionar avatar e nome do usuário
-            if ($post->user) {
-                $postData['user_avatar'] = $post->user->path_img_avatar ?? 'https://primefaces.org/cdn/primevue/images/avatar/amyelsner.png';
-                $postData['user_name'] = $post->user->nome.' '.$post->user->sobrenome;
-                $postData['user_apelido'] = $post->user->apelido;
-            }
-            $postData['comments'] = $post->comments->map(function ($comment) {
-                $commentData = $comment->toArray();
-                $commentData['avatar'] = $comment->user->path_img_avatar ?? 'https://primefaces.org/cdn/primevue/images/avatar/amyelsner.png';
-                $commentData['name'] = $comment->user->nome.' '.$comment->user->sobrenome;
-                $commentData['timeAgo'] = $comment->time_ago;
-                $commentData['user_id'] = $comment->user_id;
-                if ($comment->reply) {
-                    $commentData['reply'] = [
-                        'id' => $comment->reply->id,
-                        'name' => $comment->reply->user->nome.' '.$comment->reply->user->sobrenome,
-                        'comment' => $comment->reply->reply,
-                        'createdAt' => $comment->reply->created_at->toISOString(),
-                        'timeAgo' => $comment->reply->time_ago,
-                        'user_id' => $comment->reply->user_id,
-                    ];
-                }
-
-                return $commentData;
-            });
-
-            return $postData;
+            return $this->formatPostData($post, $user, true);
         });
 
         return response()->json([
@@ -186,8 +88,8 @@ class PostController extends Controller
                 'per_page' => $perPage,
                 'total' => $total,
                 'last_page' => ceil($total / $perPage),
-                'has_more' => ($page * $perPage) < $total
-            ]
+                'has_more' => ($page * $perPage) < $total,
+            ],
         ]);
     }
 
@@ -198,6 +100,7 @@ class PostController extends Controller
     {
         $validated = $request->validated();
         $validated['user_id'] = $request->user()->id;
+        $validated['tipo_post'] = 2; // Todo conteúdo é exclusivo para assinantes
         $validated['status'] = $validated['status'] ?? 'ativo';
         $validated['is_fixed'] = false;
         $post = Post::create($validated);
@@ -213,42 +116,14 @@ class PostController extends Controller
      */
     public function show(string $id, Request $request)
     {
-        $user = $request->user();
+        $user = $this->resolveUser($request);
         $post = Post::with(['user', 'media', 'likes', 'comments.reply.user'])
             ->findOrFail($id);
 
-        $postData = $post->toArray();
-        $postData['isLiked'] = $user ? $post->is_liked : false;
-        $postData['likes'] = $post->likes_count;
-        $postData['comments_count'] = $post->comments->count();
-        $postData['image'] = $post->media->map(function ($media) {
-            return env('AWS_URL') . '/' . $media->path;
-        })->toArray();
-        $postData['date'] = $post->created_at->format('d/m/Y');
-        $postData['status'] = $post->status;
-        $postData['is_fixed'] = $post->is_fixed;
-        $postData['comments'] = $post->comments->map(function ($comment) {
-            $commentData = $comment->toArray();
-            $commentData['avatar'] = $comment->user->path_img_avatar ?? 'https://primefaces.org/cdn/primevue/images/avatar/amyelsner.png';
-            $commentData['name'] = $comment->user->nome.' '.$comment->user->sobrenome;
-            $commentData['timeAgo'] = $comment->time_ago;
-            $commentData['user_id'] = $comment->user_id;
-            if ($comment->reply) {
-                $commentData['reply'] = [
-                    'id' => $comment->reply->id,
-                    'name' => $comment->reply->user->nome.' '.$comment->reply->user->sobrenome,
-                    'comment' => $comment->reply->reply,
-                    'createdAt' => $comment->reply->created_at->toISOString(),
-                    'timeAgo' => $comment->reply->time_ago,
-                    'user_id' => $comment->reply->user_id,
-                ];
-            }
-
-            return $commentData;
-        });
+        $canAccess = $this->userCanAccessFullContent($user);
 
         return response()->json([
-            'data' => $postData,
+            'data' => $this->formatPostData($post, $user, $canAccess),
         ]);
     }
 
@@ -260,6 +135,7 @@ class PostController extends Controller
         $post = Post::findOrFail($id);
 
         $validated = $request->validated();
+        unset($validated['tipo_post']);
 
         $post->update($validated);
 
@@ -283,15 +159,8 @@ class PostController extends Controller
             ], 403);
         }
 
-        // Deletar mídias do R2
         foreach ($post->media as $media) {
-            $oldPath = str_replace('/rebeca/', '/', $media->path);
-            $oldPath = parse_url($oldPath, PHP_URL_PATH);
-            $oldPath = ltrim($oldPath, '/');
-            if (strpos($oldPath, 'rebeca/') === 0) {
-                $oldPath = substr($oldPath, 7);
-            }
-            Storage::disk('s3')->delete($oldPath);
+            $this->deleteMediaFromStorage($media->path);
         }
 
         $post->delete();
@@ -302,7 +171,8 @@ class PostController extends Controller
     }
 
     /**
-     * Upload de mídia para o post
+     * Upload de mídia para o post.
+     * Envie is_preview=1 para cadastrar a prévia pública (apenas 1 arquivo).
      */
     public function uploadMedia(Request $request, string $id)
     {
@@ -313,6 +183,7 @@ class PostController extends Controller
             'post_id' => $post->id,
             'user_id' => $user?->id,
             'files_count' => count($request->file('media', [])),
+            'is_preview' => $request->boolean('is_preview'),
         ]);
 
         if (! $user->isAdmin() && $post->user_id !== $user->id) {
@@ -321,36 +192,46 @@ class PostController extends Controller
             ], 403);
         }
 
+        $isPreview = $request->boolean('is_preview');
+
         $request->validate([
-            'media.*' => 'required|file|mimes:jpeg,jpg,png,gif,webp,mp4,webm,mov', // 500MB max
+            'media' => $isPreview ? 'required|array|max:1' : 'required|array',
+            'media.*' => 'required|file|mimes:jpeg,jpg,png,gif,webp,mp4,webm,mov',
         ]);
 
+        if ($isPreview) {
+            $existingPreviews = $post->media()->where('is_preview', true)->get();
+            foreach ($existingPreviews as $existing) {
+                $this->deleteMediaFromStorage($existing->path);
+                $existing->delete();
+            }
+        }
+
         $uploadedMedia = [];
-        $ordem = $post->media()->max('ordem') ?? 0;
+        $ordem = $isPreview ? 0 : (($post->media()->where('is_preview', false)->max('ordem') ?? 0));
 
         foreach ($request->file('media') as $file) {
             $ordem++;
-            $extension = $file->getClientOriginalExtension();
+            $extension = strtolower($file->getClientOriginalExtension());
             $tipo = in_array($extension, ['mp4', 'webm', 'mov']) ? 'video' : 'image';
-            $path = "posts/{$post->id}/media/".time().'_'.$ordem.'_'.$file->getClientOriginalName();
+            $folder = $isPreview ? 'preview' : 'media';
+            $path = "posts/{$post->id}/{$folder}/".time().'_'.$ordem.'_'.$file->getClientOriginalName();
+
             Log::info('post_media_upload_file_started', [
                 'post_id' => $post->id,
                 'path' => $path,
                 'file_name' => $file->getClientOriginalName(),
                 'file_size' => $file->getSize(),
                 'mime_type' => $file->getMimeType(),
-                'disk' => 's3',
-                'bucket' => config('filesystems.disks.s3.bucket'),
-                'endpoint' => config('filesystems.disks.s3.endpoint'),
+                'is_preview' => $isPreview,
             ]);
 
             try {
                 $uploaded = Storage::disk('s3')->put($path, file_get_contents($file), 'public');
-                if (!$uploaded) {
+                if (! $uploaded) {
                     Log::error('post_media_upload_false', [
                         'post_id' => $post->id,
                         'path' => $path,
-                        'disk_config' => config('filesystems.disks.s3'),
                     ]);
                     throw new \Exception('Storage::put retornou false');
                 }
@@ -364,39 +245,19 @@ class PostController extends Controller
                 throw $e;
             }
 
-            Log::info('post_media_upload_file_result', [
-                'post_id' => $post->id,
-                'path' => $path,
-                'uploaded' => $uploaded,
-            ]);
-
-            // Salvar apenas o path relativo no banco (sem URL completa)
             $media = PostMedia::create([
                 'post_id' => $post->id,
                 'path' => $path,
                 'tipo' => $tipo,
-                'ordem' => $ordem,
+                'ordem' => $isPreview ? 0 : $ordem,
+                'is_preview' => $isPreview,
             ]);
-
-            // Construir URL completa apenas para retornar na resposta
-            $publicUrl = config('filesystems.disks.s3.url');
-            $bucket = config('filesystems.disks.s3.bucket');
-
-            if ($publicUrl) {
-                if (strpos($publicUrl, 'r2.dev') !== false) {
-                    $url = rtrim($publicUrl, '/').'/'.$bucket.'/'.$path;
-                } else {
-                    $url = rtrim($publicUrl, '/').'/'.$path;
-                }
-            } else {
-                $endpoint = config('filesystems.disks.s3.endpoint');
-                $url = rtrim($endpoint, '/').'/'.$bucket.'/'.$path;
-            }
 
             $uploadedMedia[] = [
                 'id' => $media->id,
-                'url' => $url,
+                'url' => $this->buildMediaUrl($path),
                 'tipo' => $tipo,
+                'is_preview' => $isPreview,
             ];
         }
 
@@ -425,18 +286,15 @@ class PostController extends Controller
             ], 403);
         }
 
-        // Se está tentando fixar, verificar se já existem 3 posts fixos do mesmo tipo
         if (! $post->is_fixed) {
             $fixedCount = Post::where('user_id', $post->user_id)
-                ->where('tipo_post', $post->tipo_post)
                 ->where('is_fixed', true)
                 ->where('id', '!=', $post->id)
                 ->count();
 
             if ($fixedCount >= 3) {
-                $tipoNome = $post->tipo_post == 1 ? 'simples' : 'exclusivos';
                 return response()->json([
-                    'message' => "Você já possui 3 posts {$tipoNome} fixados. Desfixe um post antes de fixar outro.",
+                    'message' => 'Você já possui 3 posts fixados. Desfixe um post antes de fixar outro.',
                 ], 422);
             }
         }
@@ -479,18 +337,121 @@ class PostController extends Controller
     public function getLikeStatus(string $id, Request $request)
     {
         $post = Post::findOrFail($id);
-
-        // Tentar obter o usuário autenticado
-        $user = $request->user();
-
-        // Se não encontrou, tenta pelo Auth guard
-        if (! $user && $request->bearerToken()) {
-            $user = \Illuminate\Support\Facades\Auth::guard('sanctum')->user();
-        }
+        $user = $this->resolveUser($request);
 
         return response()->json([
             'isLiked' => $user ? $post->is_liked : false,
             'likes_count' => $post->likes_count,
         ]);
+    }
+
+    private function resolveUser(Request $request): ?User
+    {
+        $user = $request->user();
+
+        if (! $user && $request->bearerToken()) {
+            $user = Auth::guard('sanctum')->user();
+        }
+
+        return $user;
+    }
+
+    private function userCanAccessFullContent(?User $user): bool
+    {
+        if (! $user) {
+            return false;
+        }
+
+        if ($user->isAdmin()) {
+            return true;
+        }
+
+        return $user->hasAssinaturaAprovadaAtiva();
+    }
+
+    private function formatPostData(Post $post, ?User $user, bool $canAccess): array
+    {
+        $previewMedia = $post->media->firstWhere('is_preview', true);
+        $contentMedia = $post->media->where('is_preview', false)->values();
+
+        $preview = $previewMedia ? $this->formatSingleMedia($previewMedia) : null;
+
+        if ($canAccess) {
+            $visibleMedia = $this->formatMediaCollection($contentMedia);
+        } else {
+            // Sem assinatura: só a prévia pública (URLs do conteúdo pago não são enviadas)
+            $visibleMedia = $preview ? [$preview] : [];
+        }
+
+        $postData = $post->toArray();
+        $postData['isLiked'] = $user ? $post->is_liked : false;
+        $postData['likes'] = $post->likes_count;
+        $postData['comments_count'] = $post->comments->count();
+        $postData['media'] = $visibleMedia;
+        $postData['preview'] = $preview;
+        $postData['has_full_access'] = $canAccess;
+        $postData['is_locked'] = ! $canAccess;
+        $postData['image'] = array_column($visibleMedia, 'url');
+        $postData['date'] = $post->created_at->format('d/m/Y');
+        $postData['status'] = $post->status;
+        $postData['is_fixed'] = $post->is_fixed;
+
+        if ($post->user) {
+            $postData['user_avatar'] = $post->user->path_img_avatar ?? 'https://primefaces.org/cdn/primevue/images/avatar/amyelsner.png';
+            $postData['user_name'] = $post->user->nome.' '.$post->user->sobrenome;
+            $postData['user_apelido'] = $post->user->apelido;
+        }
+
+        $postData['comments'] = $post->comments->map(function ($comment) {
+            $commentData = $comment->toArray();
+            $commentData['avatar'] = $comment->user->path_img_avatar ?? 'https://primefaces.org/cdn/primevue/images/avatar/amyelsner.png';
+            $commentData['name'] = $comment->user->apelido ?? ($comment->user->nome.' '.$comment->user->sobrenome);
+            $commentData['timeAgo'] = $comment->time_ago;
+            $commentData['user_id'] = $comment->user_id;
+            if ($comment->reply) {
+                $commentData['reply'] = [
+                    'id' => $comment->reply->id,
+                    'name' => $comment->reply->user->nome.' '.$comment->reply->user->sobrenome,
+                    'comment' => $comment->reply->reply,
+                    'createdAt' => $comment->reply->created_at->toISOString(),
+                    'timeAgo' => $comment->reply->time_ago,
+                    'user_id' => $comment->reply->user_id,
+                ];
+            }
+
+            return $commentData;
+        });
+
+        return $postData;
+    }
+
+    private function formatMediaCollection($medias): array
+    {
+        return $medias->map(fn ($media) => $this->formatSingleMedia($media))->values()->toArray();
+    }
+
+    private function formatSingleMedia(PostMedia $media): array
+    {
+        return [
+            'url' => $this->buildMediaUrl($media->path),
+            'tipo' => $media->tipo,
+            'is_preview' => (bool) $media->is_preview,
+        ];
+    }
+
+    private function buildMediaUrl(string $path): string
+    {
+        return rtrim((string) env('AWS_URL'), '/').'/'.ltrim($path, '/');
+    }
+
+    private function deleteMediaFromStorage(string $path): void
+    {
+        $oldPath = str_replace('/rebeca/', '/', $path);
+        $oldPath = parse_url($oldPath, PHP_URL_PATH) ?: $oldPath;
+        $oldPath = ltrim($oldPath, '/');
+        if (strpos($oldPath, 'rebeca/') === 0) {
+            $oldPath = substr($oldPath, 7);
+        }
+        Storage::disk('s3')->delete($oldPath);
     }
 }

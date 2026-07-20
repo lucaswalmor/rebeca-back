@@ -71,30 +71,23 @@ class UserController extends Controller
         // Tentar obter o usuário autenticado de múltiplas formas
         // Primeiro tenta pelo request (funciona em rotas com middleware)
         $loggedUser = $request->user();
-        
+
         // Se não encontrou, tenta pelo Auth (funciona mesmo em rotas públicas se houver token)
         if (! $loggedUser && $request->bearerToken()) {
             $loggedUser = Auth::guard('sanctum')->user();
         }
-        
+
         $isAdmin = $loggedUser && $loggedUser->isAdmin();
 
-        // Contar posts por tipo
-        // Se não for admin, contar apenas posts ativos
-        // Se for admin, contar todos os posts
+        // Contagem total de posts (todo conteúdo é exclusivo para assinantes)
+        $totalPosts = \App\Models\Post::where('user_id', $user->id)
+            ->when(! $isAdmin, function ($query) {
+                $query->where('status', 'ativo');
+            })
+            ->count();
+
         $postsCount = [
-            'simples' => \App\Models\Post::where('user_id', $user->id)
-                ->where('tipo_post', 1)
-                ->when(! $isAdmin, function ($query) {
-                    $query->where('status', 'ativo');
-                })
-                ->count(),
-            'exclusivos' => \App\Models\Post::where('user_id', $user->id)
-                ->where('tipo_post', 2)
-                ->when(! $isAdmin, function ($query) {
-                    $query->where('status', 'ativo');
-                })
-                ->count(),
+            'total' => $totalPosts,
         ];
 
         $userData = $user->toArray();

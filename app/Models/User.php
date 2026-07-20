@@ -84,6 +84,20 @@ class User extends Authenticatable
     }
 
     /**
+     * Verifica se o usuário possui assinatura aprovada e ainda vigente.
+     */
+    public function hasAssinaturaAprovadaAtiva(): bool
+    {
+        $hoje = now()->startOfDay();
+
+        return $this->assinaturas()
+            ->where('status', 'aprovado')
+            ->where('data_inicio', '<=', $hoje)
+            ->where('data_fim', '>=', $hoje)
+            ->exists();
+    }
+
+    /**
      * Relacionamento com assinaturas.
      */
     public function assinaturas()

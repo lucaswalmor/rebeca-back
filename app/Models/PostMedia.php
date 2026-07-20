@@ -12,12 +12,14 @@ class PostMedia extends Model
         'path',
         'tipo',
         'ordem',
+        'is_preview',
     ];
 
     protected function casts(): array
     {
         return [
             'ordem' => 'integer',
+            'is_preview' => 'boolean',
         ];
     }
 
