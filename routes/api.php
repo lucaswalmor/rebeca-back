@@ -92,13 +92,17 @@ Route::middleware('auth:sanctum')
         Route::delete('/comment-replies/{id}', 'destroy');
     });
 
-// Rotas de assinaturas
+// Retorno do checkout InfinitePay: precisa ser público.
+// O usuário volta de um domínio externo e frequentemente perde o Bearer token
+// (especialmente no mobile). A verificação usa order_nsu + payment_check da InfinitePay.
+Route::post('/assinaturas/processar-checkout-success', [AssinaturaController::class, 'processarCheckoutSuccess']);
+
+// Rotas de assinaturas (autenticadas)
 Route::middleware('auth:sanctum')
     ->controller(AssinaturaController::class)
     ->group(function () {
         Route::post('/assinaturas/gerar-link-pagamento', 'gerarLinkPagamento');
         Route::post('/assinaturas/consultar-status', 'consultarStatus');
-        Route::post('/assinaturas/processar-checkout-success', 'processarCheckoutSuccess');
         Route::get('/assinaturas/minhas-assinaturas', 'minhasAssinaturas');
     });
 
