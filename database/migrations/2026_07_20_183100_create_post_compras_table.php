@@ -18,7 +18,7 @@ return new class extends Migration
             $table->string('order_nsu')->nullable()->unique();
             $table->string('status')->default('pendente'); // pendente, aprovado
             $table->decimal('valor', 10, 2);
-            $table->string('link_pagamento')->nullable();
+            $table->text('link_pagamento')->nullable();
             $table->string('transaction_nsu')->nullable();
             $table->string('invoice_slug')->nullable();
             $table->string('receipt_url')->nullable();
