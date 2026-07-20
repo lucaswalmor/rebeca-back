@@ -46,28 +46,29 @@ class PostCompraController extends Controller
             ], 422);
         }
 
-        // Reutilizar link pendente existente
-        $compraPendente = PostCompra::where('user_id', $user->id)
+        // Reutilizar compra pendente existente (com ou sem link)
+        $compra = PostCompra::where('user_id', $user->id)
             ->where('post_id', $post->id)
             ->where('status', 'pendente')
-            ->whereNotNull('link_pagamento')
             ->first();
 
-        if ($compraPendente && $compraPendente->link_pagamento) {
+        if ($compra && $compra->link_pagamento) {
             return response()->json([
                 'success' => true,
-                'link' => $compraPendente->link_pagamento,
-                'compra_id' => $compraPendente->id,
-                'order_nsu' => $compraPendente->order_nsu,
+                'link' => $compra->link_pagamento,
+                'compra_id' => $compra->id,
+                'order_nsu' => $compra->order_nsu,
             ]);
         }
 
-        $compra = $compraPendente ?? PostCompra::create([
-            'user_id' => $user->id,
-            'post_id' => $post->id,
-            'status' => 'pendente',
-            'valor' => $post->preco,
-        ]);
+        if (! $compra) {
+            $compra = PostCompra::create([
+                'user_id' => $user->id,
+                'post_id' => $post->id,
+                'status' => 'pendente',
+                'valor' => $post->preco,
+            ]);
+        }
 
         $orderNsu = 'post-'.$compra->id.'-'.time();
         $compra->update([
