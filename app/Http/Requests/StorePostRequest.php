@@ -23,6 +23,7 @@ class StorePostRequest extends FormRequest
     {
         return [
             'description' => 'required|string',
+            'preco' => 'required|numeric|min:0.01',
             'status' => 'sometimes|string|in:ativo,inativo',
         ];
     }
@@ -36,6 +37,9 @@ class StorePostRequest extends FormRequest
     {
         return [
             'description.required' => 'A descrição do post é obrigatória.',
+            'preco.required' => 'O preço do conteúdo é obrigatório.',
+            'preco.numeric' => 'O preço deve ser um número.',
+            'preco.min' => 'O preço deve ser maior que zero.',
         ];
     }
 }

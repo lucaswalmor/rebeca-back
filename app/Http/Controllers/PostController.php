@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Http\Requests\StorePostRequest;
 use App\Http\Requests\UpdatePostRequest;
 use App\Models\Post;
+use App\Models\PostCompra;
 use App\Models\PostMedia;
 use App\Models\User;
 use Illuminate\Http\Request;
@@ -34,10 +35,10 @@ class PostController extends Controller
             ->take($perPage)
             ->get();
 
-        $canAccess = $this->userCanAccessFullContent($user);
+        $hasPreviewAccess = $this->userHasPreviewAccess($user);
 
-        $posts = $posts->map(function ($post) use ($user, $canAccess) {
-            return $this->formatPostData($post, $user, $canAccess);
+        $posts = $posts->map(function ($post) use ($user, $hasPreviewAccess) {
+            return $this->formatPostData($post, $user, $hasPreviewAccess);
         });
 
         return response()->json([
@@ -120,10 +121,10 @@ class PostController extends Controller
         $post = Post::with(['user', 'media', 'likes', 'comments.reply.user'])
             ->findOrFail($id);
 
-        $canAccess = $this->userCanAccessFullContent($user);
+        $hasPreviewAccess = $this->userHasPreviewAccess($user);
 
         return response()->json([
-            'data' => $this->formatPostData($post, $user, $canAccess),
+            'data' => $this->formatPostData($post, $user, $hasPreviewAccess),
         ]);
     }
 
@@ -356,7 +357,7 @@ class PostController extends Controller
         return $user;
     }
 
-    private function userCanAccessFullContent(?User $user): bool
+    private function userHasPreviewAccess(?User $user): bool
     {
         if (! $user) {
             return false;
@@ -369,18 +370,42 @@ class PostController extends Controller
         return $user->hasAssinaturaAprovadaAtiva();
     }
 
-    private function formatPostData(Post $post, ?User $user, bool $canAccess): array
+    private function userHasPurchasedPost(?User $user, Post $post): bool
+    {
+        if (! $user) {
+            return false;
+        }
+
+        if ($user->isAdmin()) {
+            return true;
+        }
+
+        return PostCompra::where('user_id', $user->id)
+            ->where('post_id', $post->id)
+            ->where('status', 'aprovado')
+            ->exists();
+    }
+
+    private function formatPostData(Post $post, ?User $user, bool $hasPreviewAccess): array
     {
         $previewMedia = $post->media->firstWhere('is_preview', true);
         $contentMedia = $post->media->where('is_preview', false)->values();
-
         $preview = $previewMedia ? $this->formatSingleMedia($previewMedia) : null;
 
-        if ($canAccess) {
+        $purchased = $this->userHasPurchasedPost($user, $post);
+        $isAdmin = $user && $user->isAdmin();
+
+        // Assinatura ativa = vê prévia; assinatura + compra = vê conteúdo completo
+        $hasFullAccess = $isAdmin || ($hasPreviewAccess && $purchased);
+
+        if ($hasFullAccess) {
             $visibleMedia = $this->formatMediaCollection($contentMedia);
-        } else {
-            // Sem assinatura: só a prévia pública (URLs do conteúdo pago não são enviadas)
+        } elseif ($hasPreviewAccess) {
             $visibleMedia = $preview ? [$preview] : [];
+        } else {
+            // Sem assinatura: não envia URLs de prévia nem de conteúdo
+            $visibleMedia = [];
+            $preview = null;
         }
 
         $postData = $post->toArray();
@@ -389,8 +414,12 @@ class PostController extends Controller
         $postData['comments_count'] = $post->comments->count();
         $postData['media'] = $visibleMedia;
         $postData['preview'] = $preview;
-        $postData['has_full_access'] = $canAccess;
-        $postData['is_locked'] = ! $canAccess;
+        $postData['preco'] = (float) $post->preco;
+        $postData['media_count'] = $contentMedia->count();
+        $postData['purchased'] = $purchased;
+        $postData['has_preview_access'] = $hasPreviewAccess || $isAdmin;
+        $postData['has_full_access'] = $hasFullAccess;
+        $postData['is_locked'] = ! $hasFullAccess;
         $postData['image'] = array_column($visibleMedia, 'url');
         $postData['date'] = $post->created_at->format('d/m/Y');
         $postData['status'] = $post->status;

@@ -130,6 +130,14 @@ class User extends Authenticatable
     }
 
     /**
+     * Relacionamento com compras de posts.
+     */
+    public function postCompras()
+    {
+        return $this->hasMany(PostCompra::class);
+    }
+
+    /**
      * Relacionamento com likes de posts.
      */
     public function postLikes()

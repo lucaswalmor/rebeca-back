@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\Assinatura;
+use App\Models\PostCompra;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Http;
@@ -37,7 +38,7 @@ class AssinaturaController extends Controller
                 Log::info('Reutilizando assinatura pendente existente:', [
                     'assinatura_id' => $assinaturaExistente->id,
                     'plano' => $request->plano,
-                    'link_pagamento' => $assinaturaExistente->link_pagamento
+                    'link_pagamento' => $assinaturaExistente->link_pagamento,
                 ]);
 
                 return response()->json([
@@ -45,7 +46,7 @@ class AssinaturaController extends Controller
                     'link' => $assinaturaExistente->link_pagamento,
                     'assinatura_id' => $assinaturaExistente->id,
                     'order_nsu' => $assinaturaExistente->order_nsu,
-                    'reutilizado' => true
+                    'reutilizado' => true,
                 ]);
             }
 
@@ -298,17 +299,24 @@ class AssinaturaController extends Controller
                 'order_nsu' => 'required|string',
             ]);
 
+            // Compra de post avulso (order_nsu começa com post-)
+            if (str_starts_with($request->order_nsu, 'post-')) {
+                return $this->processarWebhookPostCompra($request);
+            }
+
             // Buscar assinatura pelo order_nsu
             $assinatura = Assinatura::where('order_nsu', $request->order_nsu)->first();
 
-            if (!$assinatura) {
+            if (! $assinatura) {
                 Log::warning('Assinatura não encontrada para order_nsu:', ['order_nsu' => $request->order_nsu]);
+
                 return response()->json(['message' => 'Assinatura não encontrada'], 404);
             }
 
             // Verificar se o status já foi atualizado para evitar processamento duplicado
             if ($assinatura->status === 'aprovado') {
                 Log::info('Webhook já processado anteriormente:', ['order_nsu' => $request->order_nsu]);
+
                 return response()->json(['message' => 'Webhook já processado'], 200);
             }
 
@@ -344,6 +352,7 @@ class AssinaturaController extends Controller
                 'erros' => $e->errors(),
                 'dados' => $request->all(),
             ]);
+
             return response()->json(['message' => 'Dados inválidos', 'errors' => $e->errors()], 400);
 
         } catch (\Exception $e) {
@@ -352,6 +361,7 @@ class AssinaturaController extends Controller
                 'dados' => $request->all(),
                 'trace' => $e->getTraceAsString(),
             ]);
+
             return response()->json(['message' => 'Erro interno do servidor'], 500);
         }
     }
@@ -374,11 +384,17 @@ class AssinaturaController extends Controller
                 'headers' => $request->headers->all(),
             ]);
 
+            // Compra de post avulso
+            if (str_starts_with($request->order_nsu, 'post-')) {
+                return $this->processarCheckoutSuccessPostCompra($request);
+            }
+
             // Buscar assinatura pelo order_nsu
             $assinatura = Assinatura::where('order_nsu', $request->order_nsu)->first();
 
-            if (!$assinatura) {
+            if (! $assinatura) {
                 Log::warning('Assinatura não encontrada para order_nsu:', ['order_nsu' => $request->order_nsu]);
+
                 return response()->json([
                     'success' => false,
                     'message' => 'Assinatura não encontrada para o order_nsu informado',
@@ -444,12 +460,12 @@ class AssinaturaController extends Controller
 
                     if (isset($infinitePayData['amount'])) {
                         // Se não tem paid_amount, usar amount
-                        if (!isset($updateData['paid_amount'])) {
+                        if (! isset($updateData['paid_amount'])) {
                             $updateData['paid_amount'] = $infinitePayData['amount'] / 100;
                         }
                     }
 
-                    if (!empty($updateData)) {
+                    if (! empty($updateData)) {
                         $assinatura->update($updateData);
 
                         Log::info('Assinatura atualizada com dados da InfinitePay:', [
@@ -563,7 +579,7 @@ class AssinaturaController extends Controller
                         'created_at' => $assinatura->created_at,
                         'updated_at' => $assinatura->updated_at,
                     ];
-                })
+                }),
             ]);
 
         } catch (\Exception $e) {
@@ -584,5 +600,130 @@ class AssinaturaController extends Controller
             'user_id' => Auth::id(),
             'token' => $request->bearerToken(),
         ]);
+    }
+
+    private function processarWebhookPostCompra(Request $request)
+    {
+        $compra = PostCompra::where('order_nsu', $request->order_nsu)->first();
+
+        if (! $compra) {
+            Log::warning('Compra de post não encontrada para order_nsu:', ['order_nsu' => $request->order_nsu]);
+
+            return response()->json(['message' => 'Compra não encontrada'], 404);
+        }
+
+        if ($compra->status === 'aprovado') {
+            return response()->json(['message' => 'Webhook já processado'], 200);
+        }
+
+        $compra->update([
+            'status' => 'aprovado',
+            'transaction_nsu' => $request->transaction_nsu,
+            'invoice_slug' => $request->invoice_slug,
+            'receipt_url' => $request->receipt_url ?? null,
+            'paid_amount' => $request->paid_amount / 100,
+            'installments' => $request->installments,
+            'capture_method' => $request->capture_method,
+            'payment_date' => now(),
+        ]);
+
+        Log::info('Compra de post aprovada via webhook:', [
+            'compra_id' => $compra->id,
+            'post_id' => $compra->post_id,
+            'user_id' => $compra->user_id,
+            'order_nsu' => $request->order_nsu,
+        ]);
+
+        return response()->json(['message' => 'Webhook de compra processado com sucesso'], 200);
+    }
+
+    private function processarCheckoutSuccessPostCompra(Request $request)
+    {
+        $compra = PostCompra::where('order_nsu', $request->order_nsu)->first();
+
+        if (! $compra) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Compra não encontrada para o order_nsu informado',
+            ], 404);
+        }
+
+        $compra->update([
+            'capture_method' => $request->capture_method,
+            'transaction_nsu' => $request->transaction_nsu,
+            'invoice_slug' => $request->slug,
+            'receipt_url' => $request->receipt_url,
+        ]);
+
+        try {
+            $infinitePayResponse = Http::post('https://api.infinitepay.io/invoices/public/checkout/payment_check', [
+                'handle' => 'rehantunes06',
+                'order_nsu' => $request->order_nsu,
+                'transaction_nsu' => $request->transaction_nsu,
+                'slug' => $request->slug,
+            ]);
+
+            if (! $infinitePayResponse->successful()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Erro ao consultar status na InfinitePay',
+                    'type' => 'post_compra',
+                ], 400);
+            }
+
+            $infinitePayData = $infinitePayResponse->json();
+            $updateData = [];
+
+            if (isset($infinitePayData['paid'])) {
+                $updateData['status'] = $infinitePayData['paid'] ? 'aprovado' : 'pendente';
+                if ($infinitePayData['paid']) {
+                    $updateData['payment_date'] = now();
+                }
+            }
+
+            if (isset($infinitePayData['paid_amount'])) {
+                $updateData['paid_amount'] = $infinitePayData['paid_amount'] / 100;
+            } elseif (isset($infinitePayData['amount'])) {
+                $updateData['paid_amount'] = $infinitePayData['amount'] / 100;
+            }
+
+            if (isset($infinitePayData['installments'])) {
+                $updateData['installments'] = $infinitePayData['installments'];
+            }
+
+            if (! empty($updateData)) {
+                $compra->update($updateData);
+            }
+
+            $compra->refresh();
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Compra processada com sucesso',
+                'type' => 'post_compra',
+                'assinatura' => [
+                    'id' => $compra->id,
+                    'status' => $compra->status,
+                    'order_nsu' => $compra->order_nsu,
+                    'transaction_nsu' => $compra->transaction_nsu,
+                    'paid_amount' => $compra->paid_amount,
+                    'installments' => $compra->installments,
+                    'capture_method' => $compra->capture_method,
+                    'receipt_url' => $compra->receipt_url,
+                    'post_id' => $compra->post_id,
+                ],
+                'infinitepay_response' => $infinitePayData,
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Erro ao processar checkout success de compra de post:', [
+                'erro' => $e->getMessage(),
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Erro ao processar compra',
+                'type' => 'post_compra',
+            ], 500);
+        }
     }
 }

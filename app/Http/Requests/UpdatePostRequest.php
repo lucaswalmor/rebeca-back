@@ -36,6 +36,7 @@ class UpdatePostRequest extends FormRequest
     {
         return [
             'description' => 'sometimes|string',
+            'preco' => 'sometimes|numeric|min:0.01',
         ];
     }
 
@@ -48,6 +49,8 @@ class UpdatePostRequest extends FormRequest
     {
         return [
             'description.string' => 'A descrição do post deve ser um texto.',
+            'preco.numeric' => 'O preço deve ser um número.',
+            'preco.min' => 'O preço deve ser maior que zero.',
         ];
     }
 }

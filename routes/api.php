@@ -5,6 +5,7 @@ use App\Http\Controllers\AuthController;
 use App\Http\Controllers\ChatEnqueteController;
 use App\Http\Controllers\CommentController;
 use App\Http\Controllers\CommentReplyController;
+use App\Http\Controllers\PostCompraController;
 use App\Http\Controllers\PostController;
 use App\Http\Controllers\PostLikeController;
 use App\Http\Controllers\UserController;
@@ -13,7 +14,7 @@ use Illuminate\Support\Facades\Route;
 
 Route::get('/', function () {
     return response()->json([
-        'message' => 'API is running'
+        'message' => 'API is running',
     ]);
 });
 
@@ -58,6 +59,13 @@ Route::middleware('auth:sanctum')
         Route::post('/posts/{id}/media', 'uploadMedia');
         Route::post('/posts/{id}/toggle-fixed', 'toggleFixed');
         Route::post('/posts/{id}/toggle-status', 'toggleStatus');
+    });
+
+// Compra de conteúdo avulso
+Route::middleware('auth:sanctum')
+    ->controller(PostCompraController::class)
+    ->group(function () {
+        Route::post('/posts/{id}/comprar', 'comprar');
     });
 
 // Rotas de likes

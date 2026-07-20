@@ -17,6 +17,7 @@ class Post extends Model
         'user_id',
         'tipo_post',
         'description',
+        'preco',
         'status',
         'is_fixed',
     ];
@@ -26,6 +27,7 @@ class Post extends Model
         return [
             'tipo_post' => 'integer',
             'is_fixed' => 'boolean',
+            'preco' => 'decimal:2',
         ];
     }
 
@@ -47,6 +49,11 @@ class Post extends Model
     public function comments(): HasMany
     {
         return $this->hasMany(Comment::class);
+    }
+
+    public function compras(): HasMany
+    {
+        return $this->hasMany(PostCompra::class);
     }
 
     public function getIsLikedAttribute(): bool
