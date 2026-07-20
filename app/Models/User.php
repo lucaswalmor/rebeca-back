@@ -80,7 +80,7 @@ class User extends Authenticatable
      */
     public function isAdmin(): bool
     {
-        return $this->is_admin === true;
+        return filter_var($this->is_admin, FILTER_VALIDATE_BOOLEAN);
     }
 
     /**

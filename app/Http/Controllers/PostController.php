@@ -392,20 +392,27 @@ class PostController extends Controller
         $contentMedia = $post->media->where('is_preview', false)->values();
         $preview = $previewMedia ? $this->formatSingleMedia($previewMedia) : null;
 
-        $purchased = $this->userHasPurchasedPost($user, $post);
         $isAdmin = $user && $user->isAdmin();
+        $purchased = $this->userHasPurchasedPost($user, $post);
 
-        // Assinatura ativa = vê prévia; assinatura + compra = vê conteúdo completo
-        $hasFullAccess = $isAdmin || ($hasPreviewAccess && $purchased);
-
-        if ($hasFullAccess) {
+        // Admin: vê tudo liberado (prévia + exclusivo), sem regra de assinatura/compra.
+        // Assinante: vê prévia. Assinante + compra: vê conteúdo exclusivo.
+        // Sem assinatura: não recebe URLs.
+        if ($isAdmin) {
+            $visibleMedia = $this->formatMediaCollection($post->media);
+            $hasPreviewAccess = true;
+            $hasFullAccess = true;
+            $purchased = true;
+        } elseif ($hasPreviewAccess && $purchased) {
             $visibleMedia = $this->formatMediaCollection($contentMedia);
+            $hasFullAccess = true;
         } elseif ($hasPreviewAccess) {
             $visibleMedia = $preview ? [$preview] : [];
+            $hasFullAccess = false;
         } else {
-            // Sem assinatura: não envia URLs de prévia nem de conteúdo
             $visibleMedia = [];
             $preview = null;
+            $hasFullAccess = false;
         }
 
         $postData = $post->toArray();
@@ -417,7 +424,7 @@ class PostController extends Controller
         $postData['preco'] = (float) $post->preco;
         $postData['media_count'] = $contentMedia->count();
         $postData['purchased'] = $purchased;
-        $postData['has_preview_access'] = $hasPreviewAccess || $isAdmin;
+        $postData['has_preview_access'] = $hasPreviewAccess;
         $postData['has_full_access'] = $hasFullAccess;
         $postData['is_locked'] = ! $hasFullAccess;
         $postData['image'] = array_column($visibleMedia, 'url');
