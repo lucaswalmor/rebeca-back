@@ -396,7 +396,7 @@ class PostController extends Controller
         $purchased = $this->userHasPurchasedPost($user, $post);
 
         // Admin: vê tudo liberado (prévia + exclusivo), sem regra de assinatura/compra.
-        // Assinante: vê prévia. Assinante + compra: vê conteúdo exclusivo.
+        // Assinante: vê prévia. Assinante + compra: vê prévia + conteúdo exclusivo.
         // Sem assinatura: não recebe URLs.
         if ($isAdmin) {
             $visibleMedia = $this->formatMediaCollection($post->media);
@@ -404,7 +404,7 @@ class PostController extends Controller
             $hasFullAccess = true;
             $purchased = true;
         } elseif ($hasPreviewAccess && $purchased) {
-            $visibleMedia = $this->formatMediaCollection($contentMedia);
+            $visibleMedia = $this->formatMediaCollection($post->media);
             $hasFullAccess = true;
         } elseif ($hasPreviewAccess) {
             $visibleMedia = $preview ? [$preview] : [];

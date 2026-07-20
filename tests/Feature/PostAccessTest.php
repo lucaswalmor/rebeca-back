@@ -137,7 +137,7 @@ class PostAccessTest extends TestCase
         $this->assertTrue($post['media'][0]['is_preview']);
     }
 
-    public function test_assinante_com_compra_ve_conteudo_exclusivo(): void
+    public function test_assinante_com_compra_ve_previa_e_conteudo_exclusivo(): void
     {
         $author = $this->createUser(['apelido' => 'author3', 'email' => 'author3@example.com']);
         $buyer = $this->createUser(['apelido' => 'buyer', 'email' => 'buyer@example.com']);
@@ -173,7 +173,8 @@ class PostAccessTest extends TestCase
         $this->assertTrue($post['has_preview_access']);
         $this->assertTrue($post['has_full_access']);
         $this->assertFalse($post['is_locked']);
-        $this->assertCount(2, $post['media']);
-        $this->assertFalse($post['media'][0]['is_preview']);
+        $this->assertCount(3, $post['media']);
+        $this->assertTrue($post['media'][0]['is_preview']);
+        $this->assertFalse($post['media'][1]['is_preview']);
     }
 }
