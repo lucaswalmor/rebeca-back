@@ -285,6 +285,7 @@ class FakeEngagementService
     public function ensureFakeUsers(int $count = self::FAKE_USERS_COUNT): Collection
     {
         $users = collect();
+        $updatedApelidos = 0;
 
         for ($i = 1; $i <= $count; $i++) {
             $email = $this->fakeEmail($i);
@@ -304,9 +305,11 @@ class FakeEngagementService
                 ]
             );
 
-            // Atualiza apelidos antigos do padrão fan_rebeca_*
-            if ($user->apelido !== $apelido || str_starts_with((string) $user->apelido, 'fan_rebeca_')) {
-                $user->update(['apelido' => $apelido]);
+            // Sempre sincroniza o apelido (corrige fan_rebeca_* e qualquer valor antigo)
+            if ($user->apelido !== $apelido) {
+                User::where('id', $user->id)->update(['apelido' => $apelido]);
+                $user->apelido = $apelido;
+                $updatedApelidos++;
             }
 
             Assinatura::firstOrCreate(
@@ -325,7 +328,11 @@ class FakeEngagementService
                 ]
             );
 
-            $users->push($user->fresh());
+            $users->push($user);
+        }
+
+        if (app()->runningInConsole() && $updatedApelidos > 0) {
+            echo "Apelidos fake atualizados: {$updatedApelidos}".PHP_EOL;
         }
 
         return $users;
