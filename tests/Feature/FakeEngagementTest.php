@@ -59,15 +59,21 @@ class FakeEngagementTest extends TestCase
         $comments = \App\Models\Comment::where('post_id', $postId)->count();
 
         $this->assertGreaterThanOrEqual(1, $likes);
-        $this->assertLessThanOrEqual(10, $likes);
+        $this->assertLessThanOrEqual(5, $likes);
         $this->assertGreaterThanOrEqual(1, $comments);
-        $this->assertLessThanOrEqual(10, $comments);
+        $this->assertLessThanOrEqual(5, $comments);
 
         $likeUserIds = \App\Models\PostLike::where('post_id', $postId)->pluck('user_id');
         $this->assertSame($likeUserIds->count(), $likeUserIds->unique()->count());
 
         $commentUserIds = \App\Models\Comment::where('post_id', $postId)->pluck('user_id');
         $this->assertSame($commentUserIds->count(), $commentUserIds->unique()->count());
+
+        $fakeApelidos = \App\Models\User::query()
+            ->where('email', 'like', '%@'.FakeEngagementService::FAKE_EMAIL_DOMAIN)
+            ->pluck('apelido');
+
+        $this->assertFalse($fakeApelidos->contains(fn ($apelido) => str_starts_with((string) $apelido, 'fan_rebeca_')));
     }
 
     public function test_backfill_aplica_engajamento_em_posts_existentes(): void

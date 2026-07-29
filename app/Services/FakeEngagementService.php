@@ -171,6 +171,62 @@ class FakeEngagementService
     ];
 
     /**
+     * @var list<string>
+     */
+    private const FAKE_NICKNAMES = [
+        'loboNoturno',
+        'tesaoReal',
+        'paiDePutaria',
+        'viadoHetero',
+        'grossoDemais',
+        'dotadoSP',
+        'fodeGostosas',
+        'nightHunter',
+        'roludoRJ',
+        'safadoVip',
+        'putaLover',
+        'duroSempre',
+        'machoAlpha',
+        'gozaFacil',
+        'babaGostosa',
+        'peitoFan',
+        'bundaMania',
+        'privadoHot',
+        'viadoDeElite',
+        'tesudoBR',
+        'foderAgora',
+        'hardMode',
+        'papaiGrosso',
+        'chupaTudo',
+        'meterSemDo',
+        'vicioHot',
+        'nudeAddict',
+        'putaAddict',
+        'sexoNorte',
+        'roludoSul',
+        'fogoNoCu',
+        'tesaoDiario',
+        'machoBruto',
+        'gozadorNato',
+        'vipSafado',
+        'onlyFansBoy',
+        'hotViewer',
+        'privadoVip',
+        'dotadoBH',
+        'tesaoMG',
+        'fodeTrans',
+        'bundaLover',
+        'peitaoFan',
+        'sexoRapido',
+        'noiteQuente',
+        'pauDuro21',
+        'viadoRico',
+        'putariaTop',
+        'hardPlayer',
+        'gostosaFan',
+    ];
+
+    /**
      * @var list<array{nome: string, sobrenome: string}>
      */
     private const FAKE_NAMES = [
@@ -233,6 +289,7 @@ class FakeEngagementService
         for ($i = 1; $i <= $count; $i++) {
             $email = $this->fakeEmail($i);
             $name = self::FAKE_NAMES[($i - 1) % count(self::FAKE_NAMES)];
+            $apelido = self::FAKE_NICKNAMES[($i - 1) % count(self::FAKE_NICKNAMES)];
 
             $user = User::firstOrCreate(
                 ['email' => $email],
@@ -240,12 +297,17 @@ class FakeEngagementService
                     'is_admin' => false,
                     'nome' => $name['nome'],
                     'sobrenome' => $name['sobrenome'],
-                    'apelido' => 'fan_rebeca_'.$i,
+                    'apelido' => $apelido,
                     'password' => Hash::make(Str::random(32)),
                     'telefone' => sprintf('1199%07d', $i),
                     'data_nascimento' => now()->subYears(random_int(18, 40))->subDays(random_int(0, 364))->toDateString(),
                 ]
             );
+
+            // Atualiza apelidos antigos do padrão fan_rebeca_*
+            if ($user->apelido !== $apelido || str_starts_with((string) $user->apelido, 'fan_rebeca_')) {
+                $user->update(['apelido' => $apelido]);
+            }
 
             Assinatura::firstOrCreate(
                 [
@@ -263,7 +325,7 @@ class FakeEngagementService
                 ]
             );
 
-            $users->push($user);
+            $users->push($user->fresh());
         }
 
         return $users;
@@ -287,8 +349,8 @@ class FakeEngagementService
         }
 
         $maxAvailable = $fakeUsers->count();
-        $likesCount = random_int(1, min(10, $maxAvailable));
-        $commentsCount = random_int(1, min(10, $maxAvailable));
+        $likesCount = random_int(1, min(5, $maxAvailable));
+        $commentsCount = random_int(1, min(5, $maxAvailable));
 
         $likeUsers = $fakeUsers->shuffle()->take($likesCount);
         $commentUsers = $fakeUsers->shuffle()->take($commentsCount);
