@@ -59,7 +59,7 @@ class FakeEngagementTest extends TestCase
         $comments = \App\Models\Comment::where('post_id', $postId)->count();
 
         $this->assertGreaterThanOrEqual(1, $likes);
-        $this->assertLessThanOrEqual(50, $likes);
+        $this->assertLessThanOrEqual(10, $likes);
         $this->assertGreaterThanOrEqual(1, $comments);
         $this->assertLessThanOrEqual(10, $comments);
 

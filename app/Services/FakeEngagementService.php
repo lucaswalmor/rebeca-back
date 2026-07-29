@@ -160,7 +160,7 @@ class FakeEngagementService
         }
 
         $maxAvailable = $fakeUsers->count();
-        $likesCount = random_int(1, $maxAvailable);
+        $likesCount = random_int(1, min(10, $maxAvailable));
         $commentsCount = random_int(1, min(10, $maxAvailable));
 
         $likeUsers = $fakeUsers->shuffle()->take($likesCount);
