@@ -39,7 +39,7 @@ class ChatMessageReceivedMail extends Mailable
             htmlString: '<p>Olá '.e($this->recipient->nome).',</p>'
                 .'<p><strong>'.e($this->sender->apelido).'</strong> enviou uma mensagem no chat:</p>'
                 .'<p>'.e($preview).'</p>'
-                .'<p><a href="https://becalima007.vercel.app/messages">Abrir conversa</a></p>',
+                .'<p><a href="'.e(rtrim(config('services.infinitepay.frontend_url'), '/').'/messages').'">Abrir conversa</a></p>',
         );
     }
 }

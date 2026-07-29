@@ -36,24 +36,11 @@ class ChatMediaPurchaseController extends Controller
 
         $credits = (int) config('chat.media_credits_per_pack', 5);
 
-        $existente = ChatMediaPurchase::query()
+        // Cancela pendentes: links antigos podem ter redirect/webhook desatualizados
+        ChatMediaPurchase::query()
             ->where('user_id', $user->id)
             ->where('status', 'pendente')
-            ->whereNotNull('link_pagamento')
-            ->latest()
-            ->first();
-
-        if ($existente) {
-            return response()->json([
-                'success' => true,
-                'link' => $existente->link_pagamento,
-                'purchase_id' => $existente->id,
-                'order_nsu' => $existente->order_nsu,
-                'reutilizado' => true,
-                'credits' => $existente->credits,
-                'valor' => $existente->valor,
-            ]);
-        }
+            ->update(['status' => 'cancelado']);
 
         $purchase = ChatMediaPurchase::create([
             'user_id' => $user->id,
@@ -66,9 +53,9 @@ class ChatMediaPurchaseController extends Controller
         $purchase->update(['order_nsu' => $orderNsu]);
 
         $payload = [
-            'handle' => 'rehantunes06',
-            'redirect_url' => 'https://becalima007.vercel.app/checkout/success',
-            'webhook_url' => 'https://rebeca.lksoftware.com.br/public/api/webhooks/infinitepay',
+            'handle' => config('services.infinitepay.handle'),
+            'redirect_url' => rtrim(config('services.infinitepay.frontend_url'), '/').'/checkout/success',
+            'webhook_url' => config('services.infinitepay.webhook_url'),
             'order_nsu' => $orderNsu,
             'items' => [
                 [

@@ -35,4 +35,13 @@ return [
         ],
     ],
 
+    'infinitepay' => [
+        'handle' => env('INFINITEPAY_HANDLE', 'rehantunes06'),
+        'frontend_url' => env('FRONTEND_URL', 'https://www.becalima007.com.br'),
+        'webhook_url' => env(
+            'INFINITEPAY_WEBHOOK_URL',
+            'https://api.becalima007.com.br/api/webhooks/infinitepay'
+        ),
+    ],
+
 ];

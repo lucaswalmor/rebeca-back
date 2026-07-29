@@ -77,9 +77,9 @@ class PostCompraController extends Controller
         ]);
 
         $payload = [
-            'handle' => 'rehantunes06',
-            'redirect_url' => 'https://becalima007.vercel.app/checkout/success',
-            'webhook_url' => 'https://rebeca.lksoftware.com.br/public/api/webhooks/infinitepay',
+            'handle' => config('services.infinitepay.handle'),
+            'redirect_url' => rtrim(config('services.infinitepay.frontend_url'), '/').'/checkout/success',
+            'webhook_url' => config('services.infinitepay.webhook_url'),
             'order_nsu' => $orderNsu,
             'items' => [
                 [
