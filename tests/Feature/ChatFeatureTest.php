@@ -176,4 +176,121 @@ class ChatFeatureTest extends TestCase
             ->assertOk()
             ->assertJsonCount(1, 'data');
     }
+
+    public function test_subscriber_can_clear_chat_only_for_themselves(): void
+    {
+        $admin = $this->createUser([
+            'is_admin' => true,
+            'email' => 'admin@example.com',
+            'apelido' => 'admin',
+        ]);
+        $subscriber = $this->createUser();
+        $this->createActiveSubscription($subscriber);
+
+        $conversation = Conversation::create([
+            'admin_id' => $admin->id,
+            'subscriber_id' => $subscriber->id,
+            'last_message_at' => now(),
+        ]);
+
+        Message::create([
+            'conversation_id' => $conversation->id,
+            'user_id' => $admin->id,
+            'type' => 'text',
+            'body' => 'Olá',
+        ]);
+
+        Sanctum::actingAs($subscriber);
+
+        $this->postJson("/api/chat/conversations/{$conversation->id}/clear", ['scope' => 'me'])
+            ->assertOk()
+            ->assertJsonPath('scope', 'me');
+
+        $this->assertNotNull($conversation->fresh()->subscriber_cleared_at);
+        $this->assertDatabaseHas('messages', [
+            'conversation_id' => $conversation->id,
+            'body' => 'Olá',
+        ]);
+
+        $this->getJson("/api/chat/conversations/{$conversation->id}/messages")
+            ->assertOk()
+            ->assertJsonCount(0, 'data');
+
+        $this->postJson("/api/chat/conversations/{$conversation->id}/clear", ['scope' => 'everyone'])
+            ->assertForbidden();
+    }
+
+    public function test_admin_can_clear_for_everyone(): void
+    {
+        $admin = $this->createUser([
+            'is_admin' => true,
+            'email' => 'admin@example.com',
+            'apelido' => 'admin',
+        ]);
+        $subscriber = $this->createUser();
+        $this->createActiveSubscription($subscriber);
+
+        $conversation = Conversation::create([
+            'admin_id' => $admin->id,
+            'subscriber_id' => $subscriber->id,
+            'last_message_at' => now(),
+        ]);
+
+        $message = Message::create([
+            'conversation_id' => $conversation->id,
+            'user_id' => $subscriber->id,
+            'type' => 'text',
+            'body' => 'Mensagem antiga',
+        ]);
+
+        Sanctum::actingAs($admin);
+
+        $this->postJson("/api/chat/conversations/{$conversation->id}/clear", ['scope' => 'everyone'])
+            ->assertOk()
+            ->assertJsonPath('scope', 'everyone');
+
+        $this->assertDatabaseMissing('messages', ['id' => $message->id]);
+        $this->assertNull($conversation->fresh()->last_message_at);
+    }
+
+    public function test_admin_can_clear_only_for_herself(): void
+    {
+        $admin = $this->createUser([
+            'is_admin' => true,
+            'email' => 'admin@example.com',
+            'apelido' => 'admin',
+        ]);
+        $subscriber = $this->createUser();
+        $this->createActiveSubscription($subscriber);
+
+        $conversation = Conversation::create([
+            'admin_id' => $admin->id,
+            'subscriber_id' => $subscriber->id,
+            'last_message_at' => now(),
+        ]);
+
+        Message::create([
+            'conversation_id' => $conversation->id,
+            'user_id' => $subscriber->id,
+            'type' => 'text',
+            'body' => 'Oi Rebeca',
+        ]);
+
+        Sanctum::actingAs($admin);
+
+        $this->postJson("/api/chat/conversations/{$conversation->id}/clear", ['scope' => 'me'])
+            ->assertOk();
+
+        $this->assertNotNull($conversation->fresh()->admin_cleared_at);
+
+        $this->getJson("/api/chat/conversations/{$conversation->id}/messages")
+            ->assertOk()
+            ->assertJsonCount(0, 'data');
+
+        Sanctum::actingAs($subscriber);
+
+        $this->getJson("/api/chat/conversations/{$conversation->id}/messages")
+            ->assertOk()
+            ->assertJsonCount(1, 'data');
+    }
 }

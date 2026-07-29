@@ -147,6 +147,7 @@ Route::middleware('auth:sanctum')
         Route::get('/conversations/{id}/gallery', 'gallery');
         Route::post('/conversations/{id}/messages', 'store');
         Route::post('/conversations/{id}/read', 'markRead');
+        Route::post('/conversations/{id}/clear', 'clear');
         Route::put('/messages/{messageId}', 'update');
         Route::delete('/messages/{messageId}', 'destroy');
         Route::post('/messages/{messageId}/like', 'toggleLike');

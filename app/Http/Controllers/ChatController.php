@@ -238,6 +238,10 @@ class ChatController extends Controller
 
         $messages = $conversation->messages()
             ->with(['user', 'replyTo.user', 'likes'])
+            ->when(
+                $conversation->clearedAtFor($user),
+                fn ($q) => $q->where('created_at', '>', $conversation->clearedAtFor($user))
+            )
             ->orderBy('created_at')
             ->orderBy('id')
             ->paginate(50);
@@ -260,10 +264,106 @@ class ChatController extends Controller
         $media = $conversation->messages()
             ->with(['user', 'likes'])
             ->whereIn('type', ['image', 'video'])
+            ->when(
+                $conversation->clearedAtFor($user),
+                fn ($q) => $q->where('created_at', '>', $conversation->clearedAtFor($user))
+            )
             ->orderByDesc('created_at')
             ->get();
 
         return MessageResource::collection($media);
+    }
+
+    public function clear(Request $request, int $id)
+    {
+        $user = $request->user();
+        $conversation = $this->findAuthorizedConversation($user, $id);
+
+        if (! $user->isAdmin() && ! $user->hasAssinaturaAprovadaAtiva()) {
+            return response()->json([
+                'message' => 'Sua assinatura não está ativa.',
+                'requires_subscription' => true,
+            ], 403);
+        }
+
+        $request->validate([
+            'scope' => 'required|string|in:me,everyone',
+        ]);
+
+        $scope = $request->input('scope');
+
+        if ($scope === 'everyone' && ! $user->isAdmin()) {
+            return response()->json([
+                'message' => 'Apenas a administradora pode limpar a conversa para todos.',
+            ], 403);
+        }
+
+        if ($scope === 'me') {
+            if ($user->isAdmin()) {
+                $conversation->update(['admin_cleared_at' => now()]);
+            } else {
+                $conversation->update(['subscriber_cleared_at' => now()]);
+            }
+
+            ChatLogger::info('Conversation cleared for me', [
+                'conversation_id' => $conversation->id,
+                'user_id' => $user->id,
+            ]);
+
+            return response()->json([
+                'success' => true,
+                'scope' => 'me',
+                'conversation_id' => $conversation->id,
+            ]);
+        }
+
+        // Limpar para todos: remove mensagens e arquivos
+        DB::transaction(function () use ($conversation) {
+            $messages = $conversation->messages()->get();
+
+            foreach ($messages as $message) {
+                if ($message->media_path) {
+                    try {
+                        Storage::disk('s3')->delete($message->media_path);
+                    } catch (\Throwable $e) {
+                        ChatLogger::error('Failed to delete media on clear everyone', [
+                            'path' => $message->media_path,
+                            'error' => $e->getMessage(),
+                        ]);
+                    }
+                }
+                $message->likes()->delete();
+            }
+
+            $conversation->messages()->delete();
+
+            $conversation->update([
+                'admin_cleared_at' => null,
+                'subscriber_cleared_at' => null,
+                'last_message_at' => null,
+            ]);
+        });
+
+        broadcast(new ConversationUpdated(
+            $conversation->id,
+            $conversation->admin_id,
+            $conversation->subscriber_id,
+            [
+                'cleared_for_everyone' => true,
+                'cleared_by' => $user->id,
+            ]
+        ));
+
+        ChatLogger::info('Conversation cleared for everyone', [
+            'conversation_id' => $conversation->id,
+            'user_id' => $user->id,
+        ]);
+
+        return response()->json([
+            'success' => true,
+            'scope' => 'everyone',
+            'conversation_id' => $conversation->id,
+        ]);
     }
 
     public function store(Request $request, int $id)

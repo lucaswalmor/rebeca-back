@@ -20,14 +20,22 @@ class ConversationResource extends JsonResource
             }
         }
 
-        $latest = $this->relationLoaded('latestMessage') ? $this->latestMessage : null;
+        $clearedAt = $user ? $this->clearedAtFor($user) : null;
+        $latest = null;
+
+        if ($this->relationLoaded('latestMessage') && $this->latestMessage) {
+            if (! $clearedAt || $this->latestMessage->created_at?->gt($clearedAt)) {
+                $latest = $this->latestMessage;
+            }
+        }
+
         $threshold = (int) config('chat.online_threshold_seconds', 120);
 
         return [
             'id' => $this->id,
             'admin_id' => $this->admin_id,
             'subscriber_id' => $this->subscriber_id,
-            'last_message_at' => $this->last_message_at?->toIso8601String(),
+            'last_message_at' => $latest?->created_at?->toIso8601String(),
             'unread_count' => $user ? $this->unreadCountFor($user) : 0,
             'other_user' => $other ? [
                 'id' => $other->id,
