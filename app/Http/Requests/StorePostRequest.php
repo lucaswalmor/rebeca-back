@@ -7,7 +7,7 @@ use Illuminate\Foundation\Http\FormRequest;
 class StorePostRequest extends FormRequest
 {
     /**
-     * Determine if the user is authorized to make this requests.
+     * Determine if the user is authorized to make this request.
      */
     public function authorize(): bool
     {
@@ -23,7 +23,7 @@ class StorePostRequest extends FormRequest
     {
         return [
             'description' => 'required|string',
-            'preco' => 'required|numeric|min:0.01',
+            'preco' => 'nullable|numeric|min:0',
             'status' => 'sometimes|string|in:ativo,inativo',
         ];
     }
@@ -37,9 +37,15 @@ class StorePostRequest extends FormRequest
     {
         return [
             'description.required' => 'A descrição do post é obrigatória.',
-            'preco.required' => 'O preço do conteúdo é obrigatório.',
             'preco.numeric' => 'O preço deve ser um número.',
-            'preco.min' => 'O preço deve ser maior que zero.',
+            'preco.min' => 'O preço não pode ser negativo.',
         ];
+    }
+
+    protected function prepareForValidation(): void
+    {
+        if ($this->preco === null || $this->preco === '') {
+            $this->merge(['preco' => 0]);
+        }
     }
 }

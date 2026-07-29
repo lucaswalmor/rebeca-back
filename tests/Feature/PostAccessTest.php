@@ -177,4 +177,52 @@ class PostAccessTest extends TestCase
         $this->assertTrue($post['media'][0]['is_preview']);
         $this->assertFalse($post['media'][1]['is_preview']);
     }
+
+    public function test_assinante_ve_post_somente_previa_como_liberado(): void
+    {
+        $author = $this->createUser(['apelido' => 'author4', 'email' => 'author4@example.com']);
+        $subscriber = $this->createUser(['apelido' => 'sub2', 'email' => 'sub2@example.com']);
+
+        $post = Post::create([
+            'user_id' => $author->id,
+            'tipo_post' => 2,
+            'description' => 'Post só prévia',
+            'preco' => 0,
+            'status' => 'ativo',
+            'is_fixed' => false,
+        ]);
+
+        PostMedia::create([
+            'post_id' => $post->id,
+            'path' => 'posts/preview-only.jpg',
+            'tipo' => 'image',
+            'ordem' => 0,
+            'is_preview' => true,
+        ]);
+
+        Assinatura::create([
+            'user_id' => $subscriber->id,
+            'data_inicio' => now()->subDay(),
+            'data_fim' => now()->addMonth(),
+            'tipo_assinatura' => 'mensal',
+            'status' => 'aprovado',
+            'order_nsu' => 'order-sub-previa',
+            'valor' => 29.90,
+            'plano' => '1_mes',
+        ]);
+
+        Sanctum::actingAs($subscriber);
+
+        $response = $this->getJson('/api/posts');
+
+        $response->assertOk();
+        $data = $response->json('data.0');
+
+        $this->assertTrue($data['has_preview_access']);
+        $this->assertTrue($data['has_full_access']);
+        $this->assertFalse($data['is_locked']);
+        $this->assertCount(1, $data['media']);
+        $this->assertTrue($data['media'][0]['is_preview']);
+        $this->assertSame(0, $data['media_count']);
+    }
 }
