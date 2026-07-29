@@ -42,6 +42,9 @@ class User extends Authenticatable
         'valor_assinatura_semestral',
         'valor_desconto_trimestral',
         'valor_desconto_semestral',
+        'valor_pacote_midia_chat',
+        'chat_media_credits',
+        'last_seen_at',
         'chat_enquete_voted',
     ];
 
@@ -72,6 +75,9 @@ class User extends Authenticatable
             'valor_assinatura_semestral' => 'decimal:2',
             'valor_desconto_trimestral' => 'decimal:2',
             'valor_desconto_semestral' => 'decimal:2',
+            'valor_pacote_midia_chat' => 'decimal:2',
+            'chat_media_credits' => 'integer',
+            'last_seen_at' => 'datetime',
         ];
     }
 
@@ -159,5 +165,20 @@ class User extends Authenticatable
     public function commentReplies()
     {
         return $this->hasMany(CommentReply::class);
+    }
+
+    public function subscriberConversations()
+    {
+        return $this->hasMany(Conversation::class, 'subscriber_id');
+    }
+
+    public function adminConversations()
+    {
+        return $this->hasMany(Conversation::class, 'admin_id');
+    }
+
+    public function chatMediaPurchases()
+    {
+        return $this->hasMany(ChatMediaPurchase::class);
     }
 }

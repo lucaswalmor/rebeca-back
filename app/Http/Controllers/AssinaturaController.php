@@ -3,9 +3,12 @@
 namespace App\Http\Controllers;
 
 use App\Models\Assinatura;
+use App\Models\ChatMediaPurchase;
 use App\Models\PostCompra;
+use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 
@@ -304,6 +307,11 @@ class AssinaturaController extends Controller
                 return $this->processarWebhookPostCompra($request);
             }
 
+            // Pacote de mídia do chat (order_nsu começa com chatmedia-)
+            if (str_starts_with($request->order_nsu, 'chatmedia-')) {
+                return $this->processarWebhookChatMedia($request);
+            }
+
             // Buscar assinatura pelo order_nsu
             $assinatura = Assinatura::where('order_nsu', $request->order_nsu)->first();
 
@@ -387,6 +395,11 @@ class AssinaturaController extends Controller
             // Compra de post avulso
             if (str_starts_with($request->order_nsu, 'post-')) {
                 return $this->processarCheckoutSuccessPostCompra($request);
+            }
+
+            // Pacote de mídia do chat
+            if (str_starts_with($request->order_nsu, 'chatmedia-')) {
+                return $this->processarCheckoutSuccessChatMedia($request);
             }
 
             // Buscar assinatura pelo order_nsu
@@ -723,6 +736,126 @@ class AssinaturaController extends Controller
                 'success' => false,
                 'message' => 'Erro ao processar compra',
                 'type' => 'post_compra',
+            ], 500);
+        }
+    }
+
+    private function processarWebhookChatMedia(Request $request)
+    {
+        $purchase = ChatMediaPurchase::where('order_nsu', $request->order_nsu)->first();
+
+        if (! $purchase) {
+            Log::warning('[CHAT] Compra de mídia não encontrada:', ['order_nsu' => $request->order_nsu]);
+
+            return response()->json(['message' => 'Compra de mídia não encontrada'], 404);
+        }
+
+        if ($purchase->status === 'aprovado') {
+            return response()->json(['message' => 'Webhook já processado'], 200);
+        }
+
+        DB::transaction(function () use ($purchase, $request) {
+            $purchase->update([
+                'status' => 'aprovado',
+                'transaction_nsu' => $request->transaction_nsu,
+                'invoice_slug' => $request->invoice_slug,
+                'receipt_url' => $request->receipt_url ?? null,
+                'paid_amount' => $request->paid_amount / 100,
+                'installments' => $request->installments,
+                'capture_method' => $request->capture_method,
+                'payment_date' => now(),
+            ]);
+
+            User::query()->where('id', $purchase->user_id)->increment('chat_media_credits', $purchase->credits);
+        });
+
+        Log::info('[CHAT] Pacote de mídia aprovado via webhook:', [
+            'purchase_id' => $purchase->id,
+            'user_id' => $purchase->user_id,
+            'credits' => $purchase->credits,
+        ]);
+
+        return response()->json(['message' => 'Webhook de pacote de mídia processado com sucesso'], 200);
+    }
+
+    private function processarCheckoutSuccessChatMedia(Request $request)
+    {
+        $purchase = ChatMediaPurchase::where('order_nsu', $request->order_nsu)->first();
+
+        if (! $purchase) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Compra de mídia não encontrada',
+                'type' => 'chat_media',
+            ], 404);
+        }
+
+        $purchase->update([
+            'capture_method' => $request->capture_method,
+            'transaction_nsu' => $request->transaction_nsu,
+            'invoice_slug' => $request->slug,
+            'receipt_url' => $request->receipt_url,
+        ]);
+
+        try {
+            $infinitePayResponse = Http::post('https://api.infinitepay.io/invoices/public/checkout/payment_check', [
+                'handle' => 'rehantunes06',
+                'order_nsu' => $request->order_nsu,
+                'transaction_nsu' => $request->transaction_nsu,
+                'slug' => $request->slug,
+            ]);
+
+            if (! $infinitePayResponse->successful()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Erro ao consultar status na InfinitePay',
+                    'type' => 'chat_media',
+                ], 400);
+            }
+
+            $infinitePayData = $infinitePayResponse->json();
+            $wasApproved = $purchase->status === 'aprovado';
+
+            if (isset($infinitePayData['paid']) && $infinitePayData['paid'] && ! $wasApproved) {
+                DB::transaction(function () use ($purchase, $infinitePayData) {
+                    $purchase->update([
+                        'status' => 'aprovado',
+                        'payment_date' => now(),
+                        'paid_amount' => isset($infinitePayData['paid_amount'])
+                            ? $infinitePayData['paid_amount'] / 100
+                            : ($infinitePayData['amount'] ?? 0) / 100,
+                        'installments' => $infinitePayData['installments'] ?? $purchase->installments,
+                    ]);
+
+                    User::query()->where('id', $purchase->user_id)->increment('chat_media_credits', $purchase->credits);
+                });
+            }
+
+            $purchase->refresh();
+            $user = User::find($purchase->user_id);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Pacote de mídia processado',
+                'type' => 'chat_media',
+                'assinatura' => [
+                    'id' => $purchase->id,
+                    'status' => $purchase->status,
+                    'order_nsu' => $purchase->order_nsu,
+                    'transaction_nsu' => $purchase->transaction_nsu,
+                    'paid_amount' => $purchase->paid_amount,
+                    'credits' => $purchase->credits,
+                    'media_credits' => (int) ($user?->chat_media_credits ?? 0),
+                ],
+                'infinitepay_response' => $infinitePayData,
+            ]);
+        } catch (\Exception $e) {
+            Log::error('[CHAT] Erro checkout success mídia:', ['erro' => $e->getMessage()]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Erro ao processar pacote de mídia',
+                'type' => 'chat_media',
             ], 500);
         }
     }

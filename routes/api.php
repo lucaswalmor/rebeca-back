@@ -2,7 +2,9 @@
 
 use App\Http\Controllers\AssinaturaController;
 use App\Http\Controllers\AuthController;
+use App\Http\Controllers\ChatController;
 use App\Http\Controllers\ChatEnqueteController;
+use App\Http\Controllers\ChatMediaPurchaseController;
 use App\Http\Controllers\CommentController;
 use App\Http\Controllers\CommentReplyController;
 use App\Http\Controllers\PostCompraController;
@@ -10,6 +12,7 @@ use App\Http\Controllers\PostController;
 use App\Http\Controllers\PostLikeController;
 use App\Http\Controllers\UserController;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Broadcast;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/', function () {
@@ -120,4 +123,35 @@ Route::middleware('auth:sanctum')
         Route::post('/chat-enquete/votar', 'store');
         Route::get('/chat-enquete/status-voto', 'checkVoteStatus');
         Route::get('/chat-enquete/dashboard', 'dashboard');
+    });
+
+// Broadcasting auth (Sanctum Bearer)
+Route::post('/broadcasting/auth', function (Request $request) {
+    return Broadcast::auth($request);
+})->middleware('auth:sanctum');
+
+// Chat em tempo real
+Route::middleware('auth:sanctum')
+    ->controller(ChatController::class)
+    ->prefix('chat')
+    ->group(function () {
+        Route::post('/heartbeat', 'heartbeat');
+        Route::get('/unread-count', 'unreadCount');
+        Route::get('/media-package', 'mediaPackageInfo');
+        Route::get('/conversations', 'index');
+        Route::post('/conversations/open', 'openOrCreate');
+        Route::get('/conversations/{id}', 'show');
+        Route::get('/conversations/{id}/messages', 'messages');
+        Route::get('/conversations/{id}/gallery', 'gallery');
+        Route::post('/conversations/{id}/messages', 'store');
+        Route::post('/conversations/{id}/read', 'markRead');
+        Route::put('/messages/{messageId}', 'update');
+        Route::delete('/messages/{messageId}', 'destroy');
+        Route::post('/messages/{messageId}/like', 'toggleLike');
+    });
+
+Route::middleware('auth:sanctum')
+    ->controller(ChatMediaPurchaseController::class)
+    ->group(function () {
+        Route::post('/chat/media-package/gerar-link', 'gerarLink');
     });

@@ -1,0 +1,179 @@
+<?php
+
+namespace Tests\Feature;
+
+use App\Models\Assinatura;
+use App\Models\Conversation;
+use App\Models\Message;
+use App\Models\User;
+use Illuminate\Foundation\Testing\RefreshDatabase;
+use Laravel\Sanctum\Sanctum;
+use Tests\TestCase;
+
+class ChatFeatureTest extends TestCase
+{
+    use RefreshDatabase;
+
+    private function createUser(array $overrides = []): User
+    {
+        return User::create(array_merge([
+            'nome' => 'Teste',
+            'sobrenome' => 'User',
+            'apelido' => 'teste'.uniqid(),
+            'email' => uniqid('user_', true).'@example.com',
+            'password' => bcrypt('password'),
+            'telefone' => '11999999999',
+            'data_nascimento' => '1990-01-01',
+            'is_admin' => false,
+            'chat_media_credits' => 0,
+        ], $overrides));
+    }
+
+    private function createActiveSubscription(User $user): Assinatura
+    {
+        return Assinatura::create([
+            'user_id' => $user->id,
+            'data_inicio' => now()->subDay(),
+            'data_fim' => now()->addMonth(),
+            'tipo_assinatura' => 'mensal',
+            'status' => 'aprovado',
+            'valor' => 10,
+            'plano' => '1_mes',
+        ]);
+    }
+
+    public function test_subscriber_without_subscription_cannot_open_chat(): void
+    {
+        $this->createUser([
+            'is_admin' => true,
+            'email' => 'admin@example.com',
+            'apelido' => 'admin',
+        ]);
+        $subscriber = $this->createUser();
+
+        Sanctum::actingAs($subscriber);
+
+        $this->postJson('/api/chat/conversations/open')
+            ->assertForbidden()
+            ->assertJsonPath('requires_subscription', true);
+    }
+
+    public function test_subscriber_with_subscription_can_open_and_send_text(): void
+    {
+        $admin = $this->createUser([
+            'is_admin' => true,
+            'email' => 'admin@example.com',
+            'apelido' => 'admin',
+        ]);
+        $subscriber = $this->createUser();
+        $this->createActiveSubscription($subscriber);
+
+        Sanctum::actingAs($subscriber);
+
+        $open = $this->postJson('/api/chat/conversations/open')->assertSuccessful();
+        $conversationId = $open->json('data.id') ?? $open->json('id');
+
+        $this->assertNotNull($conversationId);
+        $this->assertDatabaseHas('conversations', [
+            'id' => $conversationId,
+            'admin_id' => $admin->id,
+            'subscriber_id' => $subscriber->id,
+        ]);
+
+        $this->postJson("/api/chat/conversations/{$conversationId}/messages", [
+            'type' => 'text',
+            'body' => 'Olá Rebeca',
+        ])->assertSuccessful()
+            ->assertJsonPath('data.body', 'Olá Rebeca');
+
+        $this->assertDatabaseHas('messages', [
+            'conversation_id' => $conversationId,
+            'user_id' => $subscriber->id,
+            'body' => 'Olá Rebeca',
+        ]);
+    }
+
+    public function test_subscriber_cannot_send_media_without_credits(): void
+    {
+        $this->createUser([
+            'is_admin' => true,
+            'email' => 'admin@example.com',
+            'apelido' => 'admin',
+        ]);
+        $subscriber = $this->createUser(['chat_media_credits' => 0]);
+        $this->createActiveSubscription($subscriber);
+
+        Sanctum::actingAs($subscriber);
+
+        $conversationId = $this->postJson('/api/chat/conversations/open')->json('data.id');
+
+        $this->postJson("/api/chat/conversations/{$conversationId}/messages", [
+            'type' => 'image',
+            'body' => null,
+        ])->assertStatus(422);
+    }
+
+    public function test_users_can_like_reply_edit_and_delete_messages(): void
+    {
+        $admin = $this->createUser([
+            'is_admin' => true,
+            'email' => 'admin@example.com',
+            'apelido' => 'admin',
+        ]);
+        $subscriber = $this->createUser();
+        $this->createActiveSubscription($subscriber);
+
+        $conversation = Conversation::create([
+            'admin_id' => $admin->id,
+            'subscriber_id' => $subscriber->id,
+            'last_message_at' => now(),
+        ]);
+
+        Sanctum::actingAs($subscriber);
+
+        $message = Message::create([
+            'conversation_id' => $conversation->id,
+            'user_id' => $subscriber->id,
+            'type' => 'text',
+            'body' => 'Mensagem original',
+            'delivered_at' => now(),
+        ]);
+
+        $this->postJson("/api/chat/messages/{$message->id}/like")
+            ->assertOk()
+            ->assertJsonPath('data.liked_by_me', true);
+
+        $this->putJson("/api/chat/messages/{$message->id}", [
+            'body' => 'Mensagem editada',
+        ])->assertOk()
+            ->assertJsonPath('data.body', 'Mensagem editada');
+
+        $this->deleteJson("/api/chat/messages/{$message->id}")
+            ->assertOk();
+
+        $this->assertDatabaseMissing('messages', ['id' => $message->id]);
+    }
+
+    public function test_admin_sees_conversations_list(): void
+    {
+        $admin = $this->createUser([
+            'is_admin' => true,
+            'email' => 'admin@example.com',
+            'apelido' => 'admin',
+        ]);
+        $subscriber = $this->createUser();
+        $this->createActiveSubscription($subscriber);
+
+        Conversation::create([
+            'admin_id' => $admin->id,
+            'subscriber_id' => $subscriber->id,
+            'last_message_at' => now(),
+        ]);
+
+        Sanctum::actingAs($admin);
+
+        $this->getJson('/api/chat/conversations')
+            ->assertOk()
+            ->assertJsonCount(1, 'data');
+    }
+}

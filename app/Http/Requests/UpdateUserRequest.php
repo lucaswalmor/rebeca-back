@@ -48,6 +48,7 @@ class UpdateUserRequest extends FormRequest
             'valor_assinatura_semestral' => 'nullable|numeric|min:0',
             'valor_desconto_trimestral' => 'nullable|numeric|min:0|max:100',
             'valor_desconto_semestral' => 'nullable|numeric|min:0|max:100',
+            'valor_pacote_midia_chat' => 'nullable|numeric|min:0',
         ];
     }
 
