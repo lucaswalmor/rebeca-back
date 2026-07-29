@@ -140,6 +140,8 @@ Route::middleware('auth:sanctum')
         Route::get('/media-package', 'mediaPackageInfo');
         Route::get('/conversations', 'index');
         Route::post('/conversations/open', 'openOrCreate');
+        Route::post('/conversations/start', 'startWithSubscriber');
+        Route::get('/users', 'searchableUsers');
         Route::get('/conversations/{id}', 'show');
         Route::get('/conversations/{id}/messages', 'messages');
         Route::get('/conversations/{id}/gallery', 'gallery');

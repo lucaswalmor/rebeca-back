@@ -115,6 +115,98 @@ class ChatController extends Controller
         return new ConversationResource($conversation);
     }
 
+    public function startWithSubscriber(Request $request)
+    {
+        $user = $request->user();
+
+        if (! $user->isAdmin()) {
+            return response()->json(['message' => 'Apenas a administradora pode iniciar conversas.'], 403);
+        }
+
+        $request->validate([
+            'subscriber_id' => 'required|integer|exists:users,id',
+        ]);
+
+        $subscriber = User::query()->findOrFail($request->integer('subscriber_id'));
+
+        if ($subscriber->isAdmin()) {
+            return response()->json(['message' => 'Não é possível iniciar conversa com outra administradora.'], 422);
+        }
+
+        $conversation = Conversation::query()->firstOrCreate(
+            [
+                'admin_id' => $user->id,
+                'subscriber_id' => $subscriber->id,
+            ]
+        );
+
+        $conversation->load(['admin', 'subscriber', 'latestMessage']);
+
+        ChatLogger::info('Admin started conversation', [
+            'conversation_id' => $conversation->id,
+            'subscriber_id' => $subscriber->id,
+        ]);
+
+        return new ConversationResource($conversation);
+    }
+
+    public function searchableUsers(Request $request)
+    {
+        $user = $request->user();
+
+        if (! $user->isAdmin()) {
+            return response()->json(['message' => 'Apenas a administradora pode listar usuários.'], 403);
+        }
+
+        $search = trim((string) $request->query('search', ''));
+        $perPage = min(max((int) $request->query('per_page', 20), 1), 50);
+
+        $query = User::query()
+            ->where('is_admin', false)
+            ->orderBy('apelido')
+            ->orderBy('nome');
+
+        if ($search !== '') {
+            $query->where(function ($q) use ($search) {
+                $q->where('nome', 'like', "%{$search}%")
+                    ->orWhere('sobrenome', 'like', "%{$search}%")
+                    ->orWhere('apelido', 'like', "%{$search}%")
+                    ->orWhere('email', 'like', "%{$search}%");
+            });
+        }
+
+        $existingSubscriberIds = Conversation::query()
+            ->where('admin_id', $user->id)
+            ->pluck('subscriber_id')
+            ->all();
+
+        $paginator = $query->paginate($perPage);
+
+        $data = collect($paginator->items())->map(function (User $subscriber) use ($existingSubscriberIds) {
+            return [
+                'id' => $subscriber->id,
+                'nome' => $subscriber->nome,
+                'sobrenome' => $subscriber->sobrenome,
+                'apelido' => $subscriber->apelido,
+                'email' => $subscriber->email,
+                'path_img_avatar' => $subscriber->path_img_avatar,
+                'has_active_subscription' => $subscriber->hasAssinaturaAprovadaAtiva(),
+                'has_conversation' => in_array($subscriber->id, $existingSubscriberIds, true),
+            ];
+        })->values();
+
+        return response()->json([
+            'data' => $data,
+            'meta' => [
+                'current_page' => $paginator->currentPage(),
+                'last_page' => $paginator->lastPage(),
+                'per_page' => $paginator->perPage(),
+                'total' => $paginator->total(),
+                'has_more' => $paginator->hasMorePages(),
+            ],
+        ]);
+    }
+
     public function show(Request $request, int $id)
     {
         $user = $request->user();
