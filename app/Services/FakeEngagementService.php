@@ -128,10 +128,10 @@ class FakeEngagementService
                 [
                     'data_inicio' => now()->subMonth(),
                     'data_fim' => now()->addYear(),
-                    'tipo_assinatura' => 'anual',
+                    'tipo_assinatura' => 'semestral',
                     'status' => 'aprovado',
                     'valor' => 0,
-                    'plano' => 'fake',
+                    'plano' => '6_meses',
                     'payment_date' => now()->subMonth(),
                 ]
             );
