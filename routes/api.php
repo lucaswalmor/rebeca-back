@@ -6,6 +6,7 @@ use App\Http\Controllers\ChatController;
 use App\Http\Controllers\ChatEnqueteController;
 use App\Http\Controllers\ChatMediaPurchaseController;
 use App\Http\Controllers\ChamadaVideoController;
+use App\Http\Controllers\PresentinhoController;
 use App\Http\Controllers\CommentController;
 use App\Http\Controllers\CommentReplyController;
 use App\Http\Controllers\PostCompraController;
@@ -166,4 +167,10 @@ Route::middleware('auth:sanctum')
     ->controller(ChamadaVideoController::class)
     ->group(function () {
         Route::post('/chat/conversations/{id}/video-calls', 'store');
+    });
+
+Route::middleware('auth:sanctum')
+    ->controller(PresentinhoController::class)
+    ->group(function () {
+        Route::post('/chat/conversations/{id}/presentinhos', 'store');
     });

@@ -6,6 +6,7 @@ use App\Models\Assinatura;
 use App\Models\ChamadaVideo;
 use App\Models\ChatMediaPurchase;
 use App\Models\PostCompra;
+use App\Models\Presentinho;
 use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -321,6 +322,11 @@ class AssinaturaController extends Controller
                 return $this->processarWebhookChamadaVideo($request);
             }
 
+            // Presentinho (doação no chat)
+            if (str_starts_with($request->order_nsu, 'presentinho-')) {
+                return $this->processarWebhookPresentinho($request);
+            }
+
             // Buscar assinatura pelo order_nsu
             $assinatura = Assinatura::where('order_nsu', $request->order_nsu)->first();
 
@@ -417,6 +423,11 @@ class AssinaturaController extends Controller
             // Chamada de vídeo
             if (str_starts_with($request->order_nsu, 'videocal-')) {
                 return $this->processarCheckoutSuccessChamadaVideo($request);
+            }
+
+            // Presentinho (doação no chat)
+            if (str_starts_with($request->order_nsu, 'presentinho-')) {
+                return $this->processarCheckoutSuccessPresentinho($request);
             }
 
             // Buscar assinatura pelo order_nsu
@@ -1039,6 +1050,138 @@ class AssinaturaController extends Controller
                 'success' => false,
                 'message' => 'Erro ao processar chamada de vídeo',
                 'type' => 'video_call',
+            ], 500);
+        }
+    }
+
+    private function processarWebhookPresentinho(Request $request)
+    {
+        $presentinho = Presentinho::where('order_nsu', $request->order_nsu)->first();
+
+        if (! $presentinho) {
+            Log::warning('[CHAT] Presentinho não encontrado:', ['order_nsu' => $request->order_nsu]);
+
+            return response()->json(['message' => 'Presentinho não encontrado'], 404);
+        }
+
+        if ($presentinho->status === 'aprovado') {
+            return response()->json(['message' => 'Webhook já processado'], 200);
+        }
+
+        DB::transaction(function () use ($presentinho, $request) {
+            $presentinho->update([
+                'status' => 'aprovado',
+                'transaction_nsu' => $request->transaction_nsu,
+                'invoice_slug' => $request->invoice_slug,
+                'receipt_url' => $request->receipt_url ?? null,
+                'paid_amount' => $request->paid_amount / 100,
+                'installments' => $request->installments,
+                'capture_method' => $request->capture_method,
+                'payment_date' => now(),
+            ]);
+        });
+
+        try {
+            PresentinhoController::markPaidAndNotify($presentinho->fresh());
+        } catch (\Throwable $e) {
+            Log::error('[CHAT] Falha ao enviar card do presentinho:', [
+                'presentinho_id' => $presentinho->id,
+                'erro' => $e->getMessage(),
+            ]);
+        }
+
+        Log::info('[CHAT] Presentinho aprovado via webhook:', [
+            'presentinho_id' => $presentinho->id,
+            'uuid' => $presentinho->uuid,
+        ]);
+
+        return response()->json(['message' => 'Webhook de presentinho processado com sucesso'], 200);
+    }
+
+    private function processarCheckoutSuccessPresentinho(Request $request)
+    {
+        $presentinho = Presentinho::where('order_nsu', $request->order_nsu)->first();
+
+        if (! $presentinho) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Presentinho não encontrado',
+                'type' => 'presentinho',
+            ], 404);
+        }
+
+        $presentinho->update([
+            'capture_method' => $request->capture_method,
+            'transaction_nsu' => $request->transaction_nsu,
+            'invoice_slug' => $request->slug,
+            'receipt_url' => $request->receipt_url,
+        ]);
+
+        try {
+            $infinitePayResponse = Http::post('https://api.infinitepay.io/invoices/public/checkout/payment_check', [
+                'handle' => 'rehantunes06',
+                'order_nsu' => $request->order_nsu,
+                'transaction_nsu' => $request->transaction_nsu,
+                'slug' => $request->slug,
+            ]);
+
+            if (! $infinitePayResponse->successful()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Erro ao consultar status na InfinitePay',
+                    'type' => 'presentinho',
+                ], 400);
+            }
+
+            $infinitePayData = $infinitePayResponse->json();
+            $wasApproved = $presentinho->status === 'aprovado';
+
+            if (isset($infinitePayData['paid']) && $infinitePayData['paid'] && ! $wasApproved) {
+                DB::transaction(function () use ($presentinho, $infinitePayData) {
+                    $presentinho->update([
+                        'status' => 'aprovado',
+                        'payment_date' => now(),
+                        'paid_amount' => isset($infinitePayData['paid_amount'])
+                            ? $infinitePayData['paid_amount'] / 100
+                            : ($infinitePayData['amount'] ?? 0) / 100,
+                        'installments' => $infinitePayData['installments'] ?? $presentinho->installments,
+                    ]);
+                });
+
+                try {
+                    PresentinhoController::markPaidAndNotify($presentinho->fresh());
+                } catch (\Throwable $e) {
+                    Log::error('[CHAT] Falha ao enviar card do presentinho (checkout success):', [
+                        'presentinho_id' => $presentinho->id,
+                        'erro' => $e->getMessage(),
+                    ]);
+                }
+            }
+
+            $presentinho->refresh();
+
+            return response()->json($this->withCheckoutAuth([
+                'success' => true,
+                'message' => 'Presentinho processado',
+                'type' => 'presentinho',
+                'assinatura' => [
+                    'id' => $presentinho->id,
+                    'status' => $presentinho->status,
+                    'order_nsu' => $presentinho->order_nsu,
+                    'transaction_nsu' => $presentinho->transaction_nsu,
+                    'paid_amount' => $presentinho->paid_amount,
+                    'valor' => $presentinho->valor,
+                    'conversation_id' => $presentinho->conversation_id,
+                ],
+                'infinitepay_response' => $infinitePayData,
+            ], User::find($presentinho->subscriber_id), $presentinho->status === 'aprovado'));
+        } catch (\Exception $e) {
+            Log::error('[CHAT] Erro checkout success presentinho:', ['erro' => $e->getMessage()]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Erro ao processar presentinho',
+                'type' => 'presentinho',
             ], 500);
         }
     }
