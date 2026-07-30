@@ -34,10 +34,9 @@ class PresentinhoController extends Controller
         }
 
         $data = $request->validate([
-            'valor' => 'required|numeric|min:1.01|max:5000',
+            'valor' => 'required|numeric|min:1.01',
         ], [
-            'valor.min' => 'O valor mínimo é R$ 1,01 (limite da InfinitePay).',
-            'valor.max' => 'O valor máximo é R$ 5.000,00.',
+            'valor.min' => 'O valor mínimo é R$ 1,01.',
         ]);
 
         $valor = round((float) $data['valor'], 2);
@@ -124,7 +123,7 @@ class PresentinhoController extends Controller
         }
 
         $data = $request->validate([
-            'valor' => 'nullable|numeric|min:1.01|max:5000',
+            'valor' => 'nullable|numeric|min:1.01',
             'offer_message_id' => 'nullable|integer|exists:messages,id',
         ]);
 
@@ -145,23 +144,15 @@ class PresentinhoController extends Controller
             $valor = round((float) ($offerPayload['valor'] ?? 0), 2);
 
             if ($valor < 1.01) {
-                return response()->json(['message' => 'Valor da oferta inválido.'], 422);
+                return response()->json(['message' => 'Valor da oferta inválido. Mínimo R$ 1,01.'], 422);
             }
         } else {
             $valor = round((float) ($data['valor'] ?? 0), 2);
 
-            if ($valor < 50 || $valor > 5000) {
+            if ($valor < 1.01) {
                 return response()->json([
-                    'message' => 'O valor do presentinho deve ser entre R$ 50,00 e R$ 5.000,00.',
-                    'errors' => ['valor' => ['Escolha um valor entre R$ 50 e R$ 5.000.']],
-                ], 422);
-            }
-
-            $centsCheck = (int) round($valor * 100);
-            if (($centsCheck - 5000) % 2000 !== 0) {
-                return response()->json([
-                    'message' => 'O valor do presentinho deve ser de R$ 50,00 em passos de R$ 20,00.',
-                    'errors' => ['valor' => ['Use valores como R$ 50, R$ 70, R$ 90…']],
+                    'message' => 'O valor mínimo do presentinho é R$ 1,01.',
+                    'errors' => ['valor' => ['Informe um valor de no mínimo R$ 1,01.']],
                 ], 422);
             }
         }

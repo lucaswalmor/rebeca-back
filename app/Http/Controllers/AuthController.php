@@ -85,6 +85,7 @@ class AuthController extends Controller
             'email' => $user->email,
             'is_admin' => $user->is_admin,
             'apelido' => $user->apelido,
+            'path_img_avatar' => $user->path_img_avatar,
             'assinatura' => $assinaturaAtiva,
             'status_assinatura_descricao' => $statusAssinaturaDescricao,
             'status_assinatura' => $statusAssinaturaReal,

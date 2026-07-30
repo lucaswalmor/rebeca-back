@@ -209,7 +209,12 @@ class UserController extends Controller
      */
     public function uploadAvatar(Request $request, string $id)
     {
+        $auth = $request->user();
         $user = User::findOrFail($id);
+
+        if (! $auth || (! $auth->isAdmin() && (int) $auth->id !== (int) $user->id)) {
+            return response()->json(['message' => 'Não autorizado.'], 403);
+        }
 
         $request->validate([
             'avatar' => 'required|image|mimes:jpeg,jpg,png,gif,webp|max:2048', // 2MB max
