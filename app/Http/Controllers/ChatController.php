@@ -662,6 +662,8 @@ class ChatController extends Controller
             'credits_per_pack' => (int) config('chat.media_credits_per_pack', 5),
             'price' => $admin?->valor_pacote_midia_chat,
             'can_access_chat' => $user->isAdmin() || $user->hasAssinaturaAprovadaAtiva(),
+            'wallpaper_desktop' => $admin?->chat_wallpaper_desktop,
+            'wallpaper_mobile' => $admin?->chat_wallpaper_mobile,
         ]);
     }
 

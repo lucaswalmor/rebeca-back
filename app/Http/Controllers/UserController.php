@@ -260,6 +260,119 @@ class UserController extends Controller
         ]);
     }
 
+    public function uploadChatWallpaper(Request $request, string $id)
+    {
+        $auth = $request->user();
+        $user = User::findOrFail($id);
+
+        if (! $auth || (! $auth->isAdmin() && (int) $auth->id !== (int) $user->id)) {
+            return response()->json(['message' => 'Não autorizado.'], 403);
+        }
+
+        if (! $user->isAdmin()) {
+            return response()->json(['message' => 'Apenas a administradora pode configurar wallpapers do chat.'], 403);
+        }
+
+        $request->validate([
+            'type' => 'required|string|in:desktop,mobile',
+            'wallpaper' => 'required|image|mimes:jpeg,jpg,png,gif,webp|max:8192',
+        ]);
+
+        $type = $request->input('type');
+        $field = $type === 'desktop' ? 'chat_wallpaper_desktop' : 'chat_wallpaper_mobile';
+
+        if ($user->{$field}) {
+            $this->deleteS3PathFromUrl($user->{$field});
+        }
+
+        $file = $request->file('wallpaper');
+        $path = "user/{$user->id}/chat-wallpaper/{$type}/".time().'_'.$file->getClientOriginalName();
+        Storage::disk('s3')->put($path, file_get_contents($file), 'public');
+
+        $url = $this->buildPublicS3Url($path);
+        $urlToSave = $this->normalizeStoredUrl($url);
+
+        $user->update([$field => $urlToSave]);
+
+        return response()->json([
+            'message' => 'Wallpaper do chat atualizado com sucesso.',
+            'type' => $type,
+            'url' => $urlToSave,
+            'data' => $user->fresh(),
+        ]);
+    }
+
+    public function deleteChatWallpaper(Request $request, string $id, string $type)
+    {
+        $auth = $request->user();
+        $user = User::findOrFail($id);
+
+        if (! $auth || (! $auth->isAdmin() && (int) $auth->id !== (int) $user->id)) {
+            return response()->json(['message' => 'Não autorizado.'], 403);
+        }
+
+        if (! in_array($type, ['desktop', 'mobile'], true)) {
+            return response()->json(['message' => 'Tipo inválido.'], 422);
+        }
+
+        $field = $type === 'desktop' ? 'chat_wallpaper_desktop' : 'chat_wallpaper_mobile';
+
+        if ($user->{$field}) {
+            $this->deleteS3PathFromUrl($user->{$field});
+            $user->update([$field => null]);
+        }
+
+        return response()->json([
+            'message' => 'Wallpaper removido com sucesso.',
+            'type' => $type,
+            'data' => $user->fresh(),
+        ]);
+    }
+
+    private function deleteS3PathFromUrl(?string $url): void
+    {
+        if (! $url) {
+            return;
+        }
+
+        try {
+            $oldPath = str_replace('/rebeca/', '/', $url);
+            $oldPath = parse_url($oldPath, PHP_URL_PATH) ?: $oldPath;
+            $oldPath = ltrim((string) $oldPath, '/');
+            if (str_starts_with($oldPath, 'rebeca/')) {
+                $oldPath = substr($oldPath, 7);
+            }
+            Storage::disk('s3')->delete($oldPath);
+        } catch (\Throwable $e) {
+            // silencioso — não bloqueia novo upload
+        }
+    }
+
+    private function buildPublicS3Url(string $path): string
+    {
+        $publicUrl = config('filesystems.disks.s3.url');
+        $bucket = config('filesystems.disks.s3.bucket');
+
+        if ($publicUrl) {
+            if (strpos($publicUrl, 'r2.dev') !== false) {
+                return rtrim($publicUrl, '/').'/'.$bucket.'/'.$path;
+            }
+
+            return rtrim($publicUrl, '/').'/'.$path;
+        }
+
+        $endpoint = config('filesystems.disks.s3.endpoint');
+
+        return rtrim((string) $endpoint, '/').'/'.$bucket.'/'.$path;
+    }
+
+    private function normalizeStoredUrl(string $url): string
+    {
+        $bucket = config('filesystems.disks.s3.bucket');
+
+        return str_replace('/'.$bucket.'/', '/', $url);
+    }
+
     /**
      * Converte valor formatado (R$ 100,00) para número decimal.
      */

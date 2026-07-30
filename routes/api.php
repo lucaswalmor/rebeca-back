@@ -43,6 +43,8 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::delete('/users/{id}', [UserController::class, 'destroy']);
     Route::post('/users/{id}/upload-banner', [UserController::class, 'uploadBanner']);
     Route::post('/users/{id}/upload-avatar', [UserController::class, 'uploadAvatar']);
+    Route::post('/users/{id}/upload-chat-wallpaper', [UserController::class, 'uploadChatWallpaper']);
+    Route::delete('/users/{id}/chat-wallpaper/{type}', [UserController::class, 'deleteChatWallpaper']);
 });
 
 // Rotas de posts (públicas para leitura - apenas posts ativos)

@@ -37,6 +37,8 @@ class User extends Authenticatable
         'sobre',
         'path_img_banner',
         'path_img_avatar',
+        'chat_wallpaper_desktop',
+        'chat_wallpaper_mobile',
         'valor_assinatura_mensal',
         'valor_assinatura_trimestral',
         'valor_assinatura_semestral',
