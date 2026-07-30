@@ -44,9 +44,13 @@ class ConversationResource extends JsonResource
                 'apelido' => $other->apelido,
                 'path_img_avatar' => $other->path_img_avatar,
                 'is_admin' => $other->isAdmin(),
+                'chat_blocked' => (bool) ($other->chat_blocked ?? false),
                 'is_online' => $other->last_seen_at
                     && $other->last_seen_at->gt(now()->subSeconds($threshold)),
             ] : null,
+            'chat_blocked' => (bool) ($this->relationLoaded('subscriber')
+                ? ($this->subscriber?->chat_blocked ?? false)
+                : false),
             'latest_message' => $latest ? [
                 'id' => $latest->id,
                 'type' => $latest->type,

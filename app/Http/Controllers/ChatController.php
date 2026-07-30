@@ -440,6 +440,7 @@ class ChatController extends Controller
                 'path_img_avatar' => $subscriber->path_img_avatar,
                 'has_active_subscription' => $subscriber->hasAssinaturaAprovadaAtiva(),
                 'has_conversation' => in_array($subscriber->id, $existingSubscriberIds, true),
+                'chat_blocked' => (bool) $subscriber->chat_blocked,
             ];
         })->values();
 
@@ -520,6 +521,54 @@ class ChatController extends Controller
             ->get();
 
         return MessageResource::collection($media);
+    }
+
+    public function bloquearChat(Request $request, int $id)
+    {
+        $user = $request->user();
+
+        if (! $user->isAdmin()) {
+            return response()->json(['message' => 'Apenas a administradora pode bloquear o chat.'], 403);
+        }
+
+        $conversation = $this->findAuthorizedConversation($user, $id);
+        $subscriber = $conversation->subscriber;
+
+        if (! $subscriber || $subscriber->isAdmin()) {
+            return response()->json(['message' => 'Assinante inválido.'], 422);
+        }
+
+        $subscriber->update(['chat_blocked' => true]);
+        $conversation->load(['admin', 'subscriber', 'latestMessage']);
+
+        return response()->json([
+            'message' => 'Chat bloqueado. O cliente não poderá enviar mensagens.',
+            'data' => new ConversationResource($conversation),
+        ]);
+    }
+
+    public function desbloquearChat(Request $request, int $id)
+    {
+        $user = $request->user();
+
+        if (! $user->isAdmin()) {
+            return response()->json(['message' => 'Apenas a administradora pode desbloquear o chat.'], 403);
+        }
+
+        $conversation = $this->findAuthorizedConversation($user, $id);
+        $subscriber = $conversation->subscriber;
+
+        if (! $subscriber || $subscriber->isAdmin()) {
+            return response()->json(['message' => 'Assinante inválido.'], 422);
+        }
+
+        $subscriber->update(['chat_blocked' => false]);
+        $conversation->load(['admin', 'subscriber', 'latestMessage']);
+
+        return response()->json([
+            'message' => 'Chat desbloqueado.',
+            'data' => new ConversationResource($conversation),
+        ]);
     }
 
     public function clear(Request $request, int $id)
@@ -728,6 +777,13 @@ class ChatController extends Controller
             return response()->json([
                 'message' => 'Sua assinatura não está ativa. Renove para conversar.',
                 'requires_subscription' => true,
+            ], 403);
+        }
+
+        if (! $user->isAdmin() && $user->chat_blocked) {
+            return response()->json([
+                'message' => 'Seu chat está bloqueado. Você não pode enviar mensagens no momento.',
+                'chat_blocked' => true,
             ], 403);
         }
 

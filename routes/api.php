@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\AssinaturaController;
 use App\Http\Controllers\AuthController;
+use App\Http\Controllers\AdminAssinantesController;
 use App\Http\Controllers\ChatController;
 use App\Http\Controllers\ChatMediaPurchaseController;
 use App\Http\Controllers\ChamadaVideoController;
@@ -122,6 +123,19 @@ Route::post('/webhooks/infinitepay', [AssinaturaController::class, 'webhookHandl
 Route::post('/assinaturas/testar-api', [AssinaturaController::class, 'testarApiInfinitePay']);
 Route::post('/assinaturas/debug', [AssinaturaController::class, 'debugDados']);
 
+Route::middleware('auth:sanctum')
+    ->prefix('admin')
+    ->controller(AdminAssinantesController::class)
+    ->group(function () {
+        Route::get('/assinantes', 'index');
+        Route::post('/assinantes/{id}/revogar', 'revogar');
+        Route::post('/assinantes/{id}/bloquear', 'bloquear');
+        Route::post('/assinantes/{id}/desbloquear', 'desbloquear');
+        Route::post('/assinantes/{id}/bloquear-chat', 'bloquearChat');
+        Route::post('/assinantes/{id}/desbloquear-chat', 'desbloquearChat');
+        Route::delete('/assinantes/{id}', 'destroy');
+    });
+
 // Broadcasting auth (Sanctum Bearer)
 Route::post('/broadcasting/auth', function (Request $request) {
     return Broadcast::auth($request);
@@ -148,6 +162,8 @@ Route::middleware('auth:sanctum')
         Route::post('/conversations/{id}/pix-key', 'sendPixKey');
         Route::post('/conversations/{id}/read', 'markRead');
         Route::post('/conversations/{id}/clear', 'clear');
+        Route::post('/conversations/{id}/bloquear-chat', 'bloquearChat');
+        Route::post('/conversations/{id}/desbloquear-chat', 'desbloquearChat');
         Route::put('/messages/{messageId}', 'update');
         Route::delete('/messages/{messageId}', 'destroy');
         Route::post('/messages/{messageId}/like', 'toggleLike');

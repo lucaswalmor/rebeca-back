@@ -29,6 +29,12 @@ class AuthController extends Controller
             ]);
         }
 
+        if ($user->is_blocked) {
+            throw ValidationException::withMessages([
+                'email' => ['Sua conta está bloqueada. Entre em contato com o suporte.'],
+            ]);
+        }
+
         // Cria o token de autenticação
         $token = $user->createToken('auth-token')->plainTextToken;
 
