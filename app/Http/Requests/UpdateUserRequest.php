@@ -52,6 +52,8 @@ class UpdateUserRequest extends FormRequest
             'valor_desconto_semestral' => 'nullable|numeric|min:0|max:100',
             'valor_pacote_midia_chat' => 'nullable|numeric|min:0',
             'valor_pacote_audio_chat' => 'nullable|numeric|min:0',
+            'valor_imagem_exclusiva_chat' => 'nullable|numeric|min:0',
+            'valor_video_exclusivo_chat' => 'nullable|numeric|min:0',
         ];
     }
 

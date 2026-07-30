@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\Assinatura;
 use App\Models\ChamadaVideo;
 use App\Models\ChatMediaPurchase;
+use App\Models\ConteudoExclusivo;
 use App\Models\PostCompra;
 use App\Models\Presentinho;
 use App\Models\User;
@@ -327,6 +328,11 @@ class AssinaturaController extends Controller
                 return $this->processarWebhookPresentinho($request);
             }
 
+            // Conteúdo exclusivo (imagem/vídeo sob encomenda)
+            if (str_starts_with($request->order_nsu, 'exclusivo-')) {
+                return $this->processarWebhookConteudoExclusivo($request);
+            }
+
             // Buscar assinatura pelo order_nsu
             $assinatura = Assinatura::where('order_nsu', $request->order_nsu)->first();
 
@@ -428,6 +434,11 @@ class AssinaturaController extends Controller
             // Presentinho (doação no chat)
             if (str_starts_with($request->order_nsu, 'presentinho-')) {
                 return $this->processarCheckoutSuccessPresentinho($request);
+            }
+
+            // Conteúdo exclusivo
+            if (str_starts_with($request->order_nsu, 'exclusivo-')) {
+                return $this->processarCheckoutSuccessConteudoExclusivo($request);
             }
 
             // Buscar assinatura pelo order_nsu
@@ -1182,6 +1193,139 @@ class AssinaturaController extends Controller
                 'success' => false,
                 'message' => 'Erro ao processar presentinho',
                 'type' => 'presentinho',
+            ], 500);
+        }
+    }
+
+    private function processarWebhookConteudoExclusivo(Request $request)
+    {
+        $pedido = ConteudoExclusivo::where('order_nsu', $request->order_nsu)->first();
+
+        if (! $pedido) {
+            Log::warning('[CHAT] Conteúdo exclusivo não encontrado:', ['order_nsu' => $request->order_nsu]);
+
+            return response()->json(['message' => 'Conteúdo exclusivo não encontrado'], 404);
+        }
+
+        if ($pedido->status === 'aprovado') {
+            return response()->json(['message' => 'Webhook já processado'], 200);
+        }
+
+        DB::transaction(function () use ($pedido, $request) {
+            $pedido->update([
+                'status' => 'aprovado',
+                'transaction_nsu' => $request->transaction_nsu,
+                'invoice_slug' => $request->invoice_slug,
+                'receipt_url' => $request->receipt_url ?? null,
+                'paid_amount' => $request->paid_amount / 100,
+                'installments' => $request->installments,
+                'capture_method' => $request->capture_method,
+                'payment_date' => now(),
+            ]);
+        });
+
+        try {
+            ConteudoExclusivoController::markPaidAndNotify($pedido->fresh());
+        } catch (\Throwable $e) {
+            Log::error('[CHAT] Falha ao enviar card do conteúdo exclusivo:', [
+                'conteudo_exclusivo_id' => $pedido->id,
+                'erro' => $e->getMessage(),
+            ]);
+        }
+
+        Log::info('[CHAT] Conteúdo exclusivo aprovado via webhook:', [
+            'conteudo_exclusivo_id' => $pedido->id,
+            'uuid' => $pedido->uuid,
+        ]);
+
+        return response()->json(['message' => 'Webhook de conteúdo exclusivo processado com sucesso'], 200);
+    }
+
+    private function processarCheckoutSuccessConteudoExclusivo(Request $request)
+    {
+        $pedido = ConteudoExclusivo::where('order_nsu', $request->order_nsu)->first();
+
+        if (! $pedido) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Conteúdo exclusivo não encontrado',
+                'type' => 'conteudo_exclusivo',
+            ], 404);
+        }
+
+        $pedido->update([
+            'capture_method' => $request->capture_method,
+            'transaction_nsu' => $request->transaction_nsu,
+            'invoice_slug' => $request->slug,
+            'receipt_url' => $request->receipt_url,
+        ]);
+
+        try {
+            $infinitePayResponse = Http::post('https://api.infinitepay.io/invoices/public/checkout/payment_check', [
+                'handle' => 'rehantunes06',
+                'order_nsu' => $request->order_nsu,
+                'transaction_nsu' => $request->transaction_nsu,
+                'slug' => $request->slug,
+            ]);
+
+            if (! $infinitePayResponse->successful()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Erro ao consultar status na InfinitePay',
+                    'type' => 'conteudo_exclusivo',
+                ], 400);
+            }
+
+            $infinitePayData = $infinitePayResponse->json();
+            $wasApproved = $pedido->status === 'aprovado';
+
+            if (isset($infinitePayData['paid']) && $infinitePayData['paid'] && ! $wasApproved) {
+                DB::transaction(function () use ($pedido, $infinitePayData) {
+                    $pedido->update([
+                        'status' => 'aprovado',
+                        'payment_date' => now(),
+                        'paid_amount' => isset($infinitePayData['paid_amount'])
+                            ? $infinitePayData['paid_amount'] / 100
+                            : ($infinitePayData['amount'] ?? 0) / 100,
+                        'installments' => $infinitePayData['installments'] ?? $pedido->installments,
+                    ]);
+                });
+
+                try {
+                    ConteudoExclusivoController::markPaidAndNotify($pedido->fresh());
+                } catch (\Throwable $e) {
+                    Log::error('[CHAT] Falha ao enviar card do conteúdo exclusivo (checkout success):', [
+                        'conteudo_exclusivo_id' => $pedido->id,
+                        'erro' => $e->getMessage(),
+                    ]);
+                }
+            }
+
+            $pedido->refresh();
+
+            return response()->json($this->withCheckoutAuth([
+                'success' => true,
+                'message' => 'Conteúdo exclusivo processado',
+                'type' => 'conteudo_exclusivo',
+                'assinatura' => [
+                    'id' => $pedido->id,
+                    'status' => $pedido->status,
+                    'order_nsu' => $pedido->order_nsu,
+                    'transaction_nsu' => $pedido->transaction_nsu,
+                    'paid_amount' => $pedido->paid_amount,
+                    'valor' => $pedido->valor,
+                    'tipo' => $pedido->tipo,
+                    'conversation_id' => $pedido->conversation_id,
+                ],
+                'infinitepay_response' => $infinitePayData,
+            ], User::find($pedido->subscriber_id), $pedido->status === 'aprovado'));
+        } catch (\Exception $e) {
+            Log::error('[CHAT] Erro checkout success conteúdo exclusivo:', ['erro' => $e->getMessage()]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Erro ao processar conteúdo exclusivo',
+                'type' => 'conteudo_exclusivo',
             ], 500);
         }
     }

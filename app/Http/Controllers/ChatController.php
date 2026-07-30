@@ -716,6 +716,8 @@ class ChatController extends Controller
             'audio_max_seconds' => (int) config('chat.audio_max_seconds', 60),
             'price' => $admin?->valor_pacote_midia_chat,
             'audio_price' => $admin?->valor_pacote_audio_chat,
+            'exclusive_image_price' => $admin?->valor_imagem_exclusiva_chat,
+            'exclusive_video_price' => $admin?->valor_video_exclusivo_chat,
             'can_access_chat' => $user->isAdmin() || $user->hasAssinaturaAprovadaAtiva(),
             'wallpaper_desktop' => $admin?->chat_wallpaper_desktop,
             'wallpaper_mobile' => $admin?->chat_wallpaper_mobile,
