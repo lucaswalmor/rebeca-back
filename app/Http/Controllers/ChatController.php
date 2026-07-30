@@ -69,6 +69,12 @@ class ChatController extends Controller
 
         $conversations = Conversation::query()
             ->where('admin_id', $user->id)
+            ->where(function ($q) {
+                // Esconde conversas excluídas "só para mim" até chegar mensagem nova
+                $q->whereNull('admin_cleared_at')
+                    ->orWhereColumn('last_message_at', '>', 'admin_cleared_at');
+            })
+            ->whereNotNull('last_message_at')
             ->with(['subscriber', 'latestMessage'])
             ->orderByDesc('last_message_at')
             ->orderByDesc('id')
