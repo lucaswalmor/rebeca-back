@@ -3,7 +3,6 @@
 use App\Http\Controllers\AssinaturaController;
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\ChatController;
-use App\Http\Controllers\ChatEnqueteController;
 use App\Http\Controllers\ChatMediaPurchaseController;
 use App\Http\Controllers\ChamadaVideoController;
 use App\Http\Controllers\PresentinhoController;
@@ -122,15 +121,6 @@ Route::post('/webhooks/infinitepay', [AssinaturaController::class, 'webhookHandl
 // Rota de teste (remover em produção)
 Route::post('/assinaturas/testar-api', [AssinaturaController::class, 'testarApiInfinitePay']);
 Route::post('/assinaturas/debug', [AssinaturaController::class, 'debugDados']);
-
-// Rotas da enquete do chat
-Route::middleware('auth:sanctum')
-    ->controller(ChatEnqueteController::class)
-    ->group(function () {
-        Route::post('/chat-enquete/votar', 'store');
-        Route::get('/chat-enquete/status-voto', 'checkVoteStatus');
-        Route::get('/chat-enquete/dashboard', 'dashboard');
-    });
 
 // Broadcasting auth (Sanctum Bearer)
 Route::post('/broadcasting/auth', function (Request $request) {

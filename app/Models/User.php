@@ -58,7 +58,6 @@ class User extends Authenticatable
         'chat_audio_credits',
         'last_seen_at',
         'chat_welcome_sent_at',
-        'chat_enquete_voted',
     ];
 
     /**
