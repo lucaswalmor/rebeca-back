@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Events\ConversationUpdated;
 use App\Events\MessageSent;
+use App\Http\Resources\MessageResource;
 use App\Models\Conversation;
 use App\Models\Message;
 use App\Models\Presentinho;
@@ -15,12 +16,94 @@ use Illuminate\Support\Str;
 
 class PresentinhoController extends Controller
 {
+    /**
+     * Admin: cria oferta de presentinho no chat (cliente paga depois).
+     */
+    public function offer(Request $request, int $id)
+    {
+        $user = $request->user();
+
+        if (! $user->isAdmin()) {
+            return response()->json(['message' => 'Apenas a administradora pode gerar Pix de presentinho.'], 403);
+        }
+
+        $conversation = Conversation::query()->findOrFail($id);
+
+        if (! $conversation->isParticipant($user)) {
+            return response()->json(['message' => 'Não autorizado.'], 403);
+        }
+
+        $data = $request->validate([
+            'valor' => 'required|numeric|min:1.01|max:5000',
+        ], [
+            'valor.min' => 'O valor mínimo é R$ 1,01 (limite da InfinitePay).',
+            'valor.max' => 'O valor máximo é R$ 5.000,00.',
+        ]);
+
+        $valor = round((float) $data['valor'], 2);
+
+        $payload = [
+            'valor' => $valor,
+            'titulo' => 'Presentinho',
+            'card_kind' => 'offer',
+        ];
+
+        $message = Message::create([
+            'conversation_id' => $conversation->id,
+            'user_id' => $user->id,
+            'type' => 'presentinho_offer',
+            'body' => json_encode($payload, JSON_UNESCAPED_UNICODE),
+            'delivered_at' => now(),
+        ]);
+
+        $conversation->update(['last_message_at' => now()]);
+        $message->load(['user', 'replyTo.user', 'likes']);
+
+        $valorLabel = 'R$ '.number_format($valor, 2, ',', '.');
+
+        broadcast(new MessageSent($message))->toOthers();
+        broadcast(new ConversationUpdated(
+            $conversation->id,
+            $conversation->admin_id,
+            $conversation->subscriber_id,
+            [
+                'unread_bump' => true,
+                'sender' => [
+                    'id' => $user->id,
+                    'nome' => $user->nome,
+                    'apelido' => $user->apelido,
+                ],
+                'latest_message' => [
+                    'id' => $message->id,
+                    'type' => $message->type,
+                    'body' => "Presentinho de {$valorLabel}",
+                    'user_id' => $message->user_id,
+                    'conversation_id' => $conversation->id,
+                    'created_at' => $message->created_at?->toIso8601String(),
+                ],
+            ]
+        ));
+
+        ChatLogger::info('Presentinho offer sent', [
+            'message_id' => $message->id,
+            'valor' => $valor,
+            'conversation_id' => $conversation->id,
+        ]);
+
+        return (new MessageResource($message))->additional([
+            'success' => true,
+        ]);
+    }
+
+    /**
+     * Cliente: gera link InfinitePay (slider livre ou oferta da admin).
+     */
     public function store(Request $request, int $id)
     {
         $user = $request->user();
 
         if ($user->isAdmin()) {
-            return response()->json(['message' => 'A administradora não envia presentinho.'], 422);
+            return response()->json(['message' => 'A administradora não paga presentinho.'], 422);
         }
 
         if (! $user->hasAssinaturaAprovadaAtiva()) {
@@ -41,23 +124,49 @@ class PresentinhoController extends Controller
         }
 
         $data = $request->validate([
-            'valor' => 'required|numeric|min:50|max:50000',
-        ], [
-            'valor.min' => 'O valor mínimo do presentinho é R$ 50,00.',
-            'valor.max' => 'O valor máximo do presentinho é R$ 50.000,00.',
+            'valor' => 'nullable|numeric|min:1.01|max:5000',
+            'offer_message_id' => 'nullable|integer|exists:messages,id',
         ]);
 
-        $valor = round((float) $data['valor'], 2);
-        $cents = (int) round($valor * 100);
-        $minCents = 5000;
-        $stepCents = 2000;
+        $valor = null;
 
-        if (($cents - $minCents) % $stepCents !== 0) {
-            return response()->json([
-                'message' => 'O valor do presentinho deve ser de R$ 50,00 em passos de R$ 20,00.',
-                'errors' => ['valor' => ['Use valores como R$ 50, R$ 70, R$ 90…']],
-            ], 422);
+        if (! empty($data['offer_message_id'])) {
+            $offer = Message::query()
+                ->where('id', $data['offer_message_id'])
+                ->where('conversation_id', $conversation->id)
+                ->where('type', 'presentinho_offer')
+                ->first();
+
+            if (! $offer) {
+                return response()->json(['message' => 'Oferta de presentinho inválida.'], 422);
+            }
+
+            $offerPayload = json_decode((string) $offer->body, true) ?: [];
+            $valor = round((float) ($offerPayload['valor'] ?? 0), 2);
+
+            if ($valor < 1.01) {
+                return response()->json(['message' => 'Valor da oferta inválido.'], 422);
+            }
+        } else {
+            $valor = round((float) ($data['valor'] ?? 0), 2);
+
+            if ($valor < 50 || $valor > 5000) {
+                return response()->json([
+                    'message' => 'O valor do presentinho deve ser entre R$ 50,00 e R$ 5.000,00.',
+                    'errors' => ['valor' => ['Escolha um valor entre R$ 50 e R$ 5.000.']],
+                ], 422);
+            }
+
+            $centsCheck = (int) round($valor * 100);
+            if (($centsCheck - 5000) % 2000 !== 0) {
+                return response()->json([
+                    'message' => 'O valor do presentinho deve ser de R$ 50,00 em passos de R$ 20,00.',
+                    'errors' => ['valor' => ['Use valores como R$ 50, R$ 70, R$ 90…']],
+                ], 422);
+            }
         }
+
+        $cents = (int) round($valor * 100);
 
         Presentinho::query()
             ->where('subscriber_id', $user->id)
@@ -129,6 +238,7 @@ class PresentinhoController extends Controller
             'presentinho_id' => $presentinho->id,
             'valor' => $valor,
             'conversation_id' => $conversation->id,
+            'from_offer' => ! empty($data['offer_message_id']),
         ]);
 
         return response()->json([

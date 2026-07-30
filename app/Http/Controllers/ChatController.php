@@ -557,6 +557,71 @@ class ChatController extends Controller
         ]);
     }
 
+    public function sendPixKey(Request $request, int $id)
+    {
+        $user = $request->user();
+
+        if (! $user->isAdmin()) {
+            return response()->json(['message' => 'Apenas a administradora pode enviar a chave Pix.'], 403);
+        }
+
+        $conversation = $this->findAuthorizedConversation($user, $id);
+        $pixKey = trim((string) config('chat.pix_key', ''));
+
+        if ($pixKey === '') {
+            return response()->json(['message' => 'Chave Pix não configurada.'], 422);
+        }
+
+        $payload = [
+            'chave' => $pixKey,
+            'titulo' => 'Chave Pix',
+        ];
+
+        $message = Message::create([
+            'conversation_id' => $conversation->id,
+            'user_id' => $user->id,
+            'type' => 'pix_key',
+            'body' => json_encode($payload, JSON_UNESCAPED_UNICODE),
+            'delivered_at' => now(),
+        ]);
+
+        $conversation->update(['last_message_at' => now()]);
+        $message->load(['user', 'replyTo.user', 'likes']);
+
+        broadcast(new MessageSent($message))->toOthers();
+        broadcast(new ConversationUpdated(
+            $conversation->id,
+            $conversation->admin_id,
+            $conversation->subscriber_id,
+            [
+                'unread_bump' => true,
+                'sender' => [
+                    'id' => $user->id,
+                    'nome' => $user->nome,
+                    'apelido' => $user->apelido,
+                ],
+                'latest_message' => [
+                    'id' => $message->id,
+                    'type' => $message->type,
+                    'body' => 'Chave Pix',
+                    'user_id' => $message->user_id,
+                    'conversation_id' => $conversation->id,
+                    'created_at' => $message->created_at?->toIso8601String(),
+                ],
+            ]
+        ));
+
+        $this->notifyOfflineRecipient($conversation, $user, $message);
+
+        ChatLogger::info('Pix key sent', [
+            'message_id' => $message->id,
+            'conversation_id' => $conversation->id,
+            'user_id' => $user->id,
+        ]);
+
+        return new MessageResource($message);
+    }
+
     public function update(Request $request, int $messageId)
     {
         $user = $request->user();

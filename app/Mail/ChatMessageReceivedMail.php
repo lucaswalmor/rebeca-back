@@ -35,7 +35,9 @@ class ChatMessageReceivedMail extends Mailable
             'audio' => 'Enviou um áudio',
             'video_call' => 'Enviou uma chamada de vídeo',
             'presentinho' => 'Enviou um presentinho',
+            'presentinho_offer' => 'Pediu um presentinho',
             'conteudo_exclusivo' => 'Pediu um conteúdo exclusivo',
+            'pix_key' => 'Enviou a chave Pix',
             default => \Illuminate\Support\Str::limit((string) $this->message->body, 120),
         };
 

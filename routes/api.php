@@ -151,6 +151,7 @@ Route::middleware('auth:sanctum')
         Route::get('/conversations/{id}/messages', 'messages');
         Route::get('/conversations/{id}/gallery', 'gallery');
         Route::post('/conversations/{id}/messages', 'store');
+        Route::post('/conversations/{id}/pix-key', 'sendPixKey');
         Route::post('/conversations/{id}/read', 'markRead');
         Route::post('/conversations/{id}/clear', 'clear');
         Route::put('/messages/{messageId}', 'update');
@@ -174,6 +175,7 @@ Route::middleware('auth:sanctum')
     ->controller(PresentinhoController::class)
     ->group(function () {
         Route::post('/chat/conversations/{id}/presentinhos', 'store');
+        Route::post('/chat/conversations/{id}/presentinho-offers', 'offer');
     });
 
 Route::middleware('auth:sanctum')
