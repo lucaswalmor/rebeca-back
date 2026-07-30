@@ -32,19 +32,32 @@ class AuthController extends Controller
         // Cria o token de autenticação
         $token = $user->createToken('auth-token')->plainTextToken;
 
-        // Prepara os dados do usuário baseado no tipo
+        return response()->json($this->buildAuthResponse($user, $token));
+    }
+
+    /**
+     * Monta payload de sessão (usado no login e no restore pós-checkout).
+     */
+    public function buildAuthResponse(User $user, ?string $token = null): array
+    {
+        $token ??= $user->createToken('checkout-restore')->plainTextToken;
         $userData = $this->prepareUserData($user);
 
-        return response()->json([
+        if (! $user->isAdmin()) {
+            $userData['chat_media_credits'] = (int) $user->chat_media_credits;
+            $userData['chat_audio_credits'] = (int) $user->chat_audio_credits;
+        }
+
+        return [
             'user' => $userData,
             'token' => $token,
-        ]);
+        ];
     }
 
     /**
      * Prepara os dados do usuário para retorno.
      */
-    private function prepareUserData(User $user): array
+    public function prepareUserData(User $user): array
     {
         if ($user->isAdmin()) {
             // Admin: todos os campos menos created_at e updated_at

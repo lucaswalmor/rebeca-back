@@ -7,7 +7,6 @@ use App\Models\ChamadaVideo;
 use App\Models\ChatMediaPurchase;
 use App\Models\PostCompra;
 use App\Models\User;
-use App\Http\Controllers\ChamadaVideoController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -505,7 +504,7 @@ class AssinaturaController extends Controller
                         ]);
                     }
 
-                    return response()->json([
+                    return response()->json($this->withCheckoutAuth([
                         'success' => true,
                         'message' => 'Dados salvos e status consultado com sucesso',
                         'assinatura' => [
@@ -519,7 +518,7 @@ class AssinaturaController extends Controller
                             'receipt_url' => $assinatura->receipt_url,
                         ],
                         'infinitepay_response' => $infinitePayData,
-                    ]);
+                    ], User::find($assinatura->user_id), $assinatura->status === 'aprovado'));
 
                 } else {
                     Log::error('Erro na resposta da InfinitePay:', [
@@ -728,7 +727,7 @@ class AssinaturaController extends Controller
 
             $compra->refresh();
 
-            return response()->json([
+            return response()->json($this->withCheckoutAuth([
                 'success' => true,
                 'message' => 'Compra processada com sucesso',
                 'type' => 'post_compra',
@@ -744,7 +743,7 @@ class AssinaturaController extends Controller
                     'post_id' => $compra->post_id,
                 ],
                 'infinitepay_response' => $infinitePayData,
-            ]);
+            ], User::find($compra->user_id), $compra->status === 'aprovado'));
         } catch (\Exception $e) {
             Log::error('Erro ao processar checkout success de compra de post:', [
                 'erro' => $e->getMessage(),
@@ -756,6 +755,27 @@ class AssinaturaController extends Controller
                 'type' => 'post_compra',
             ], 500);
         }
+    }
+
+    private function checkoutAuthPayload(?User $user): ?array
+    {
+        if (! $user) {
+            return null;
+        }
+
+        return app(AuthController::class)->buildAuthResponse($user->fresh());
+    }
+
+    private function withCheckoutAuth(array $payload, ?User $user, bool $paid = false): array
+    {
+        if ($paid && $user) {
+            $auth = $this->checkoutAuthPayload($user);
+            if ($auth) {
+                $payload['auth'] = $auth;
+            }
+        }
+
+        return $payload;
     }
 
     private function creditChatPackagePurchase(ChatMediaPurchase $purchase): void
@@ -862,7 +882,7 @@ class AssinaturaController extends Controller
             $purchase->refresh();
             $user = User::find($purchase->user_id);
 
-            return response()->json([
+            return response()->json($this->withCheckoutAuth([
                 'success' => true,
                 'message' => 'Pacote chat processado',
                 'type' => 'chat_media',
@@ -879,7 +899,7 @@ class AssinaturaController extends Controller
                     'audio_credits' => (int) ($user?->chat_audio_credits ?? 0),
                 ],
                 'infinitepay_response' => $infinitePayData,
-            ]);
+            ], $user, $purchase->status === 'aprovado'));
         } catch (\Exception $e) {
             Log::error('[CHAT] Erro checkout success pacote chat:', ['erro' => $e->getMessage()]);
 
@@ -997,7 +1017,7 @@ class AssinaturaController extends Controller
 
             $chamada->refresh();
 
-            return response()->json([
+            return response()->json($this->withCheckoutAuth([
                 'success' => true,
                 'message' => 'Chamada de vídeo processada',
                 'type' => 'video_call',
@@ -1011,7 +1031,7 @@ class AssinaturaController extends Controller
                     'conversation_id' => $chamada->conversation_id,
                 ],
                 'infinitepay_response' => $infinitePayData,
-            ]);
+            ], User::find($chamada->subscriber_id), $chamada->status === 'aprovado'));
         } catch (\Exception $e) {
             Log::error('[CHAT] Erro checkout success chamada vídeo:', ['erro' => $e->getMessage()]);
 
