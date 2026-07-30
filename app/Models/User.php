@@ -39,6 +39,12 @@ class User extends Authenticatable
         'path_img_avatar',
         'chat_wallpaper_desktop',
         'chat_wallpaper_mobile',
+        'welcome_titulo',
+        'welcome_body',
+        'welcome_image_url',
+        'welcome_video_url',
+        'welcome_audio_url',
+        'welcome_audio_duration',
         'valor_assinatura_mensal',
         'valor_assinatura_trimestral',
         'valor_assinatura_semestral',
@@ -51,6 +57,7 @@ class User extends Authenticatable
         'chat_media_credits',
         'chat_audio_credits',
         'last_seen_at',
+        'chat_welcome_sent_at',
         'chat_enquete_voted',
     ];
 
@@ -87,7 +94,9 @@ class User extends Authenticatable
             'valor_video_exclusivo_chat' => 'decimal:2',
             'chat_media_credits' => 'integer',
             'chat_audio_credits' => 'integer',
+            'welcome_audio_duration' => 'integer',
             'last_seen_at' => 'datetime',
+            'chat_welcome_sent_at' => 'datetime',
         ];
     }
 

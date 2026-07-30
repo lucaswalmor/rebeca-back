@@ -173,17 +173,26 @@ class ChatController extends Controller
             'body' => 'nullable|string|max:5000',
             'media' => 'nullable|file|mimes:mp3,ogg,m4a,mpeg,wav,aac,mpga,webm|max:10240',
             'audio_duration' => 'nullable|integer|min:1|max:60',
+            'media_files' => 'nullable|array|max:10',
+            'media_files.*' => 'file|mimes:jpeg,jpg,png,gif,webp,mp4,webm,mov|max:102400',
         ]);
 
         $titulo = trim((string) ($data['titulo'] ?? ''));
         $body = trim((string) ($data['body'] ?? ''));
         $hasAudio = $request->hasFile('media');
+        $mediaFiles = $request->hasFile('media_files')
+            ? $request->file('media_files')
+            : [];
 
-        if ($titulo === '' && $body === '' && ! $hasAudio) {
+        if (! is_array($mediaFiles)) {
+            $mediaFiles = [$mediaFiles];
+        }
+
+        if ($titulo === '' && $body === '' && ! $hasAudio && count($mediaFiles) === 0) {
             return response()->json([
-                'message' => 'Informe pelo menos um título, uma mensagem ou um áudio.',
+                'message' => 'Informe pelo menos um título, mensagem, áudio, imagem ou vídeo.',
                 'errors' => [
-                    'content' => ['Preencha título, mensagem ou anexe um áudio.'],
+                    'content' => ['Preencha título, mensagem ou anexe áudio/imagem/vídeo.'],
                 ],
             ], 422);
         }
@@ -238,6 +247,20 @@ class ChatController extends Controller
             }
         }
 
+        $preparedMedia = [];
+        foreach ($mediaFiles as $file) {
+            $mime = (string) $file->getMimeType();
+            $isVideo = str_starts_with($mime, 'video/')
+                || in_array(strtolower((string) $file->getClientOriginalExtension()), ['mp4', 'webm', 'mov'], true);
+
+            $preparedMedia[] = [
+                'type' => $isVideo ? 'video' : 'image',
+                'binary' => file_get_contents($file->getRealPath()),
+                'ext' => $file->getClientOriginalExtension() ?: ($isVideo ? 'mp4' : 'jpg'),
+                'label' => $isVideo ? 'Vídeo' : 'Foto',
+            ];
+        }
+
         $sent = 0;
         $failed = 0;
 
@@ -250,6 +273,8 @@ class ChatController extends Controller
                     ]
                 );
 
+                $latestPreview = null;
+
                 if ($textBody !== null) {
                     $message = Message::create([
                         'conversation_id' => $conversation->id,
@@ -260,29 +285,42 @@ class ChatController extends Controller
                     ]);
                     $conversation->update(['last_message_at' => now()]);
                     $message->load(['user', 'replyTo.user', 'likes']);
-
                     broadcast(new MessageSent($message))->toOthers();
-                    broadcast(new ConversationUpdated(
-                        $conversation->id,
-                        $conversation->admin_id,
-                        $conversation->subscriber_id,
-                        [
-                            'unread_bump' => true,
-                            'sender' => [
-                                'id' => $user->id,
-                                'nome' => $user->nome,
-                                'apelido' => $user->apelido,
-                            ],
-                            'latest_message' => [
-                                'id' => $message->id,
-                                'type' => $message->type,
-                                'body' => $message->body,
-                                'user_id' => $message->user_id,
-                                'conversation_id' => $conversation->id,
-                                'created_at' => $message->created_at?->toIso8601String(),
-                            ],
-                        ]
-                    ));
+                    $latestPreview = [
+                        'id' => $message->id,
+                        'type' => $message->type,
+                        'body' => $message->body,
+                        'user_id' => $message->user_id,
+                        'conversation_id' => $conversation->id,
+                        'created_at' => $message->created_at?->toIso8601String(),
+                    ];
+                }
+
+                foreach ($preparedMedia as $mediaItem) {
+                    $mediaPath = 'chat/'.$conversation->id.'/'.time().'_'.uniqid().'.'.$mediaItem['ext'];
+                    Storage::disk('s3')->put($mediaPath, $mediaItem['binary'], 'public');
+                    $mediaUrl = rtrim((string) env('AWS_URL'), '/').'/'.$mediaPath;
+
+                    $mediaMessage = Message::create([
+                        'conversation_id' => $conversation->id,
+                        'user_id' => $user->id,
+                        'type' => $mediaItem['type'],
+                        'body' => null,
+                        'media_path' => $mediaPath,
+                        'media_url' => $mediaUrl,
+                        'delivered_at' => now(),
+                    ]);
+                    $conversation->update(['last_message_at' => now()]);
+                    $mediaMessage->load(['user', 'replyTo.user', 'likes']);
+                    broadcast(new MessageSent($mediaMessage))->toOthers();
+                    $latestPreview = [
+                        'id' => $mediaMessage->id,
+                        'type' => $mediaMessage->type,
+                        'body' => $mediaItem['label'],
+                        'user_id' => $mediaMessage->user_id,
+                        'conversation_id' => $conversation->id,
+                        'created_at' => $mediaMessage->created_at?->toIso8601String(),
+                    ];
                 }
 
                 if ($audioBinary !== null) {
@@ -301,8 +339,18 @@ class ChatController extends Controller
                     ]);
                     $conversation->update(['last_message_at' => now()]);
                     $audioMessage->load(['user', 'replyTo.user', 'likes']);
-
                     broadcast(new MessageSent($audioMessage))->toOthers();
+                    $latestPreview = [
+                        'id' => $audioMessage->id,
+                        'type' => $audioMessage->type,
+                        'body' => 'Áudio',
+                        'user_id' => $audioMessage->user_id,
+                        'conversation_id' => $conversation->id,
+                        'created_at' => $audioMessage->created_at?->toIso8601String(),
+                    ];
+                }
+
+                if ($latestPreview !== null) {
                     broadcast(new ConversationUpdated(
                         $conversation->id,
                         $conversation->admin_id,
@@ -314,14 +362,7 @@ class ChatController extends Controller
                                 'nome' => $user->nome,
                                 'apelido' => $user->apelido,
                             ],
-                            'latest_message' => [
-                                'id' => $audioMessage->id,
-                                'type' => $audioMessage->type,
-                                'body' => 'Áudio',
-                                'user_id' => $audioMessage->user_id,
-                                'conversation_id' => $conversation->id,
-                                'created_at' => $audioMessage->created_at?->toIso8601String(),
-                            ],
+                            'latest_message' => $latestPreview,
                         ]
                     ));
                 }
@@ -343,6 +384,7 @@ class ChatController extends Controller
             'failed' => $failed,
             'has_text' => $textBody !== null,
             'has_audio' => $hasAudio,
+            'media_count' => count($preparedMedia),
         ]);
 
         return response()->json([
@@ -569,6 +611,111 @@ class ChatController extends Controller
             'success' => true,
             'scope' => 'everyone',
             'conversation_id' => $conversation->id,
+        ]);
+    }
+
+    public function clearAll(Request $request)
+    {
+        $user = $request->user();
+
+        if (! $user->isAdmin()) {
+            return response()->json([
+                'message' => 'Apenas a administradora pode apagar todas as conversas.',
+            ], 403);
+        }
+
+        $request->validate([
+            'scope' => 'required|string|in:me,everyone',
+        ]);
+
+        $scope = $request->input('scope');
+        $conversations = Conversation::query()
+            ->where('admin_id', $user->id)
+            ->get();
+
+        if ($conversations->isEmpty()) {
+            return response()->json([
+                'success' => true,
+                'scope' => $scope,
+                'cleared' => 0,
+            ]);
+        }
+
+        if ($scope === 'me') {
+            Conversation::query()
+                ->where('admin_id', $user->id)
+                ->update(['admin_cleared_at' => now()]);
+
+            ChatLogger::info('All conversations cleared for me', [
+                'user_id' => $user->id,
+                'cleared' => $conversations->count(),
+            ]);
+
+            return response()->json([
+                'success' => true,
+                'scope' => 'me',
+                'cleared' => $conversations->count(),
+            ]);
+        }
+
+        $cleared = 0;
+
+        foreach ($conversations as $conversation) {
+            try {
+                DB::transaction(function () use ($conversation) {
+                    $messages = $conversation->messages()->get();
+
+                    foreach ($messages as $message) {
+                        if ($message->media_path) {
+                            try {
+                                Storage::disk('s3')->delete($message->media_path);
+                            } catch (\Throwable $e) {
+                                ChatLogger::error('Failed to delete media on clear-all everyone', [
+                                    'path' => $message->media_path,
+                                    'error' => $e->getMessage(),
+                                ]);
+                            }
+                        }
+                        $message->likes()->delete();
+                    }
+
+                    $conversation->messages()->delete();
+
+                    $conversation->update([
+                        'admin_cleared_at' => null,
+                        'subscriber_cleared_at' => null,
+                        'last_message_at' => null,
+                    ]);
+                });
+
+                broadcast(new ConversationUpdated(
+                    $conversation->id,
+                    $conversation->admin_id,
+                    $conversation->subscriber_id,
+                    [
+                        'cleared_for_everyone' => true,
+                        'cleared_by' => $user->id,
+                    ]
+                ));
+
+                $cleared++;
+            } catch (\Throwable $e) {
+                Log::error('[CHAT] clearAll falhou', [
+                    'conversation_id' => $conversation->id,
+                    'erro' => $e->getMessage(),
+                ]);
+            }
+        }
+
+        ChatLogger::info('All conversations cleared for everyone', [
+            'user_id' => $user->id,
+            'cleared' => $cleared,
+        ]);
+
+        return response()->json([
+            'success' => true,
+            'scope' => 'everyone',
+            'cleared' => $cleared,
         ]);
     }
 

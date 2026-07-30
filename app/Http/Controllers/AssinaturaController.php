@@ -9,6 +9,7 @@ use App\Models\ConteudoExclusivo;
 use App\Models\PostCompra;
 use App\Models\Presentinho;
 use App\Models\User;
+use App\Services\WelcomeMessageService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -369,10 +370,9 @@ class AssinaturaController extends Controller
                 'valor_pago' => $request->paid_amount / 100,
             ]);
 
-            // Aqui você pode adicionar lógica adicional como:
-            // - Enviar email de confirmação
-            // - Ativar funcionalidades para o usuário
-            // - Notificar administradores
+            if ($subscriber = User::find($assinatura->user_id)) {
+                app(WelcomeMessageService::class)->sendOnFirstSubscription($subscriber);
+            }
 
             return response()->json(['message' => 'Webhook processado com sucesso'], 200);
 
@@ -524,6 +524,13 @@ class AssinaturaController extends Controller
                             'assinatura_id' => $assinatura->id,
                             'update_data' => $updateData,
                         ]);
+                    }
+
+                    $assinatura->refresh();
+                    if ($assinatura->status === 'aprovado') {
+                        if ($subscriber = User::find($assinatura->user_id)) {
+                            app(WelcomeMessageService::class)->sendOnFirstSubscription($subscriber);
+                        }
                     }
 
                     return response()->json($this->withCheckoutAuth([

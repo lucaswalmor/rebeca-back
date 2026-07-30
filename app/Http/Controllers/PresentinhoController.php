@@ -34,9 +34,9 @@ class PresentinhoController extends Controller
         }
 
         $data = $request->validate([
-            'valor' => 'required|numeric|min:1.01',
+            'valor' => 'required|numeric|min:50',
         ], [
-            'valor.min' => 'O valor mínimo é R$ 1,01.',
+            'valor.min' => 'O valor mínimo é R$ 50,00.',
         ]);
 
         $valor = round((float) $data['valor'], 2);
@@ -123,7 +123,7 @@ class PresentinhoController extends Controller
         }
 
         $data = $request->validate([
-            'valor' => 'nullable|numeric|min:1.01',
+            'valor' => 'nullable|numeric|min:50',
             'offer_message_id' => 'nullable|integer|exists:messages,id',
         ]);
 
@@ -143,16 +143,16 @@ class PresentinhoController extends Controller
             $offerPayload = json_decode((string) $offer->body, true) ?: [];
             $valor = round((float) ($offerPayload['valor'] ?? 0), 2);
 
-            if ($valor < 1.01) {
-                return response()->json(['message' => 'Valor da oferta inválido. Mínimo R$ 1,01.'], 422);
+            if ($valor < 50) {
+                return response()->json(['message' => 'Valor da oferta inválido. Mínimo R$ 50,00.'], 422);
             }
         } else {
             $valor = round((float) ($data['valor'] ?? 0), 2);
 
-            if ($valor < 1.01) {
+            if ($valor < 50) {
                 return response()->json([
-                    'message' => 'O valor mínimo do presentinho é R$ 1,01.',
-                    'errors' => ['valor' => ['Informe um valor de no mínimo R$ 1,01.']],
+                    'message' => 'O valor mínimo do presentinho é R$ 50,00.',
+                    'errors' => ['valor' => ['Informe um valor de no mínimo R$ 50,00.']],
                 ], 422);
             }
         }

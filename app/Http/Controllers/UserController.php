@@ -334,6 +334,105 @@ class UserController extends Controller
         ]);
     }
 
+    public function uploadWelcomeMedia(Request $request, string $id)
+    {
+        $auth = $request->user();
+        $user = User::findOrFail($id);
+
+        if (! $auth?->isAdmin() || (int) $auth->id !== (int) $user->id) {
+            return response()->json(['message' => 'Não autorizado.'], 403);
+        }
+
+        $request->validate([
+            'type' => 'required|string|in:image,video,audio',
+            'media' => 'required|file',
+            'audio_duration' => 'nullable|integer|min:1|max:60',
+        ]);
+
+        $type = $request->input('type');
+        $file = $request->file('media');
+
+        if ($type === 'image') {
+            $request->validate(['media' => 'image|mimes:jpeg,jpg,png,gif,webp|max:25600']);
+        } elseif ($type === 'video') {
+            $request->validate(['media' => 'mimes:mp4,webm,mov|max:102400']);
+        } else {
+            $request->validate(['media' => 'mimes:mp3,ogg,m4a,mpeg,wav,aac,mpga,webm|max:10240']);
+        }
+
+        $field = match ($type) {
+            'image' => 'welcome_image_url',
+            'video' => 'welcome_video_url',
+            default => 'welcome_audio_url',
+        };
+
+        if ($user->{$field}) {
+            $this->deleteS3PathFromUrl($user->{$field});
+        }
+
+        $ext = $file->getClientOriginalExtension() ?: match ($type) {
+            'image' => 'jpg',
+            'video' => 'mp4',
+            default => 'webm',
+        };
+        $path = "user/{$user->id}/welcome/{$type}/".time().'_'.uniqid().'.'.$ext;
+        Storage::disk('s3')->put($path, file_get_contents($file->getRealPath()), 'public');
+
+        $url = $this->normalizeStoredUrl($this->buildPublicS3Url($path));
+        $payload = [$field => $url];
+
+        if ($type === 'audio') {
+            $payload['welcome_audio_duration'] = max(1, (int) $request->input('audio_duration', 1));
+        }
+
+        $user->update($payload);
+
+        return response()->json([
+            'message' => 'Mídia da mensagem inicial atualizada.',
+            'type' => $type,
+            'url' => $url,
+            'audio_duration' => $user->fresh()->welcome_audio_duration,
+            'data' => $user->fresh(),
+        ]);
+    }
+
+    public function deleteWelcomeMedia(Request $request, string $id, string $type)
+    {
+        $auth = $request->user();
+        $user = User::findOrFail($id);
+
+        if (! $auth?->isAdmin() || (int) $auth->id !== (int) $user->id) {
+            return response()->json(['message' => 'Não autorizado.'], 403);
+        }
+
+        if (! in_array($type, ['image', 'video', 'audio'], true)) {
+            return response()->json(['message' => 'Tipo inválido.'], 422);
+        }
+
+        $field = match ($type) {
+            'image' => 'welcome_image_url',
+            'video' => 'welcome_video_url',
+            default => 'welcome_audio_url',
+        };
+
+        if ($user->{$field}) {
+            $this->deleteS3PathFromUrl($user->{$field});
+        }
+
+        $payload = [$field => null];
+        if ($type === 'audio') {
+            $payload['welcome_audio_duration'] = null;
+        }
+
+        $user->update($payload);
+
+        return response()->json([
+            'message' => 'Mídia removida com sucesso.',
+            'type' => $type,
+            'data' => $user->fresh(),
+        ]);
+    }
+
     private function deleteS3PathFromUrl(?string $url): void
     {
         if (! $url) {

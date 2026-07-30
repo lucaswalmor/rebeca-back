@@ -48,6 +48,8 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/users/{id}/upload-avatar', [UserController::class, 'uploadAvatar']);
     Route::post('/users/{id}/upload-chat-wallpaper', [UserController::class, 'uploadChatWallpaper']);
     Route::delete('/users/{id}/chat-wallpaper/{type}', [UserController::class, 'deleteChatWallpaper']);
+    Route::post('/users/{id}/upload-welcome-media', [UserController::class, 'uploadWelcomeMedia']);
+    Route::delete('/users/{id}/welcome-media/{type}', [UserController::class, 'deleteWelcomeMedia']);
 });
 
 // Rotas de posts (públicas para leitura - apenas posts ativos)
@@ -148,6 +150,7 @@ Route::middleware('auth:sanctum')
         Route::post('/conversations/start', 'startWithSubscriber');
         Route::post('/broadcast', 'broadcast');
         Route::get('/users', 'searchableUsers');
+        Route::post('/conversations/clear-all', 'clearAll');
         Route::get('/conversations/{id}', 'show');
         Route::get('/conversations/{id}/messages', 'messages');
         Route::get('/conversations/{id}/gallery', 'gallery');
