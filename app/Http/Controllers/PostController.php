@@ -173,7 +173,7 @@ class PostController extends Controller
 
     /**
      * Upload de mídia para o post.
-     * Envie is_preview=1 para cadastrar a prévia pública (apenas 1 arquivo).
+     * Envie is_preview=1 para cadastrar as prévias públicas (um ou mais arquivos).
      */
     public function uploadMedia(Request $request, string $id)
     {
@@ -196,7 +196,7 @@ class PostController extends Controller
         $isPreview = $request->boolean('is_preview');
 
         $request->validate([
-            'media' => $isPreview ? 'required|array|max:1' : 'required|array',
+            'media' => 'required|array|max:50',
             'media.*' => 'required|file|mimes:jpeg,jpg,png,gif,webp,mp4,webm,mov',
         ]);
 
@@ -209,7 +209,9 @@ class PostController extends Controller
         }
 
         $uploadedMedia = [];
-        $ordem = $isPreview ? 0 : (($post->media()->where('is_preview', false)->max('ordem') ?? 0));
+        $ordem = $isPreview
+            ? 0
+            : (($post->media()->where('is_preview', false)->max('ordem') ?? 0));
 
         foreach ($request->file('media') as $file) {
             $ordem++;
@@ -250,7 +252,7 @@ class PostController extends Controller
                 'post_id' => $post->id,
                 'path' => $path,
                 'tipo' => $tipo,
-                'ordem' => $isPreview ? 0 : $ordem,
+                'ordem' => $ordem,
                 'is_preview' => $isPreview,
             ]);
 
@@ -388,9 +390,10 @@ class PostController extends Controller
 
     private function formatPostData(Post $post, ?User $user, bool $hasPreviewAccess): array
     {
-        $previewMedia = $post->media->firstWhere('is_preview', true);
+        $previewMediaItems = $post->media->where('is_preview', true)->values();
         $contentMedia = $post->media->where('is_preview', false)->values();
-        $preview = $previewMedia ? $this->formatSingleMedia($previewMedia) : null;
+        $previews = $this->formatMediaCollection($previewMediaItems);
+        $preview = $previews[0] ?? null;
 
         $isAdmin = $user && $user->isAdmin();
         $purchased = $this->userHasPurchasedPost($user, $post);
@@ -399,7 +402,7 @@ class PostController extends Controller
         $isFreeOrPreviewOnly = $contentMedia->isEmpty() || (float) $post->preco <= 0;
 
         // Admin: vê tudo liberado (prévia + exclusivo), sem regra de assinatura/compra.
-        // Assinante: vê prévia. Assinante + compra (ou post grátis): vê prévia + exclusivo.
+        // Assinante: vê prévias. Assinante + compra (ou post grátis): vê prévia + exclusivo.
         // Sem assinatura: não recebe URLs.
         if ($isAdmin) {
             $visibleMedia = $this->formatMediaCollection($post->media);
@@ -410,7 +413,7 @@ class PostController extends Controller
             $visibleMedia = $this->formatMediaCollection($post->media);
             $hasFullAccess = true;
         } elseif ($hasPreviewAccess) {
-            $visibleMedia = $preview ? [$preview] : [];
+            $visibleMedia = $previews;
             $hasFullAccess = false;
         } else {
             $visibleMedia = [];

@@ -225,4 +225,70 @@ class PostAccessTest extends TestCase
         $this->assertTrue($data['media'][0]['is_preview']);
         $this->assertSame(0, $data['media_count']);
     }
+
+    public function test_assinante_ve_todas_as_previas_quando_ha_conteudo_exclusivo(): void
+    {
+        $author = $this->createUser(['apelido' => 'author5', 'email' => 'author5@example.com']);
+        $subscriber = $this->createUser(['apelido' => 'sub3', 'email' => 'sub3@example.com']);
+
+        $post = Post::create([
+            'user_id' => $author->id,
+            'tipo_post' => 2,
+            'description' => 'Post com várias prévias',
+            'preco' => 29.90,
+            'status' => 'ativo',
+            'is_fixed' => false,
+        ]);
+
+        PostMedia::create([
+            'post_id' => $post->id,
+            'path' => 'posts/preview-1.jpg',
+            'tipo' => 'image',
+            'ordem' => 1,
+            'is_preview' => true,
+        ]);
+
+        PostMedia::create([
+            'post_id' => $post->id,
+            'path' => 'posts/preview-2.jpg',
+            'tipo' => 'image',
+            'ordem' => 2,
+            'is_preview' => true,
+        ]);
+
+        PostMedia::create([
+            'post_id' => $post->id,
+            'path' => 'posts/exclusivo.jpg',
+            'tipo' => 'image',
+            'ordem' => 3,
+            'is_preview' => false,
+        ]);
+
+        Assinatura::create([
+            'user_id' => $subscriber->id,
+            'data_inicio' => now()->subDay(),
+            'data_fim' => now()->addMonth(),
+            'tipo_assinatura' => 'mensal',
+            'status' => 'aprovado',
+            'order_nsu' => 'order-sub-multi-previa',
+            'valor' => 29.90,
+            'plano' => '1_mes',
+        ]);
+
+        Sanctum::actingAs($subscriber);
+
+        $response = $this->getJson('/api/posts');
+
+        $response->assertOk();
+        $data = $response->json('data.0');
+
+        $this->assertTrue($data['has_preview_access']);
+        $this->assertFalse($data['has_full_access']);
+        $this->assertTrue($data['is_locked']);
+        $this->assertCount(2, $data['media']);
+        $this->assertTrue($data['media'][0]['is_preview']);
+        $this->assertTrue($data['media'][1]['is_preview']);
+        $this->assertSame(1, $data['media_count']);
+        $this->assertNotNull($data['preview']);
+    }
 }
