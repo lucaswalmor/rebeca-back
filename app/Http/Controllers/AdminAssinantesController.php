@@ -23,6 +23,7 @@ class AdminAssinantesController extends Controller
 
         $query = User::query()
             ->where('is_admin', false)
+            ->where('email', 'not like', '%fake%')
             ->with(['assinaturas' => function ($q) {
                 $q->orderByDesc('data_fim')->orderByDesc('id');
             }]);
