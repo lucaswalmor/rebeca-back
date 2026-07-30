@@ -5,6 +5,7 @@ use App\Http\Controllers\AuthController;
 use App\Http\Controllers\ChatController;
 use App\Http\Controllers\ChatEnqueteController;
 use App\Http\Controllers\ChatMediaPurchaseController;
+use App\Http\Controllers\ChamadaVideoController;
 use App\Http\Controllers\CommentController;
 use App\Http\Controllers\CommentReplyController;
 use App\Http\Controllers\PostCompraController;
@@ -159,4 +160,10 @@ Route::middleware('auth:sanctum')
     ->controller(ChatMediaPurchaseController::class)
     ->group(function () {
         Route::post('/chat/media-package/gerar-link', 'gerarLink');
+    });
+
+Route::middleware('auth:sanctum')
+    ->controller(ChamadaVideoController::class)
+    ->group(function () {
+        Route::post('/chat/conversations/{id}/video-calls', 'store');
     });

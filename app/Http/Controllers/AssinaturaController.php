@@ -3,9 +3,11 @@
 namespace App\Http\Controllers;
 
 use App\Models\Assinatura;
+use App\Models\ChamadaVideo;
 use App\Models\ChatMediaPurchase;
 use App\Models\PostCompra;
 use App\Models\User;
+use App\Http\Controllers\ChamadaVideoController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -315,6 +317,11 @@ class AssinaturaController extends Controller
                 return $this->processarWebhookChatMedia($request);
             }
 
+            // Chamada de vídeo
+            if (str_starts_with($request->order_nsu, 'videocal-')) {
+                return $this->processarWebhookChamadaVideo($request);
+            }
+
             // Buscar assinatura pelo order_nsu
             $assinatura = Assinatura::where('order_nsu', $request->order_nsu)->first();
 
@@ -406,6 +413,11 @@ class AssinaturaController extends Controller
                 || str_starts_with($request->order_nsu, 'chataudio-')
             ) {
                 return $this->processarCheckoutSuccessChatMedia($request);
+            }
+
+            // Chamada de vídeo
+            if (str_starts_with($request->order_nsu, 'videocal-')) {
+                return $this->processarCheckoutSuccessChamadaVideo($request);
             }
 
             // Buscar assinatura pelo order_nsu
@@ -875,6 +887,138 @@ class AssinaturaController extends Controller
                 'success' => false,
                 'message' => 'Erro ao processar pacote chat',
                 'type' => 'chat_media',
+            ], 500);
+        }
+    }
+
+    private function processarWebhookChamadaVideo(Request $request)
+    {
+        $chamada = ChamadaVideo::where('order_nsu', $request->order_nsu)->first();
+
+        if (! $chamada) {
+            Log::warning('[CHAT] Chamada de vídeo não encontrada:', ['order_nsu' => $request->order_nsu]);
+
+            return response()->json(['message' => 'Chamada de vídeo não encontrada'], 404);
+        }
+
+        if ($chamada->status === 'aprovado') {
+            return response()->json(['message' => 'Webhook já processado'], 200);
+        }
+
+        DB::transaction(function () use ($chamada, $request) {
+            $chamada->update([
+                'status' => 'aprovado',
+                'transaction_nsu' => $request->transaction_nsu,
+                'invoice_slug' => $request->invoice_slug,
+                'receipt_url' => $request->receipt_url ?? null,
+                'paid_amount' => $request->paid_amount / 100,
+                'installments' => $request->installments,
+                'capture_method' => $request->capture_method,
+                'payment_date' => now(),
+            ]);
+        });
+
+        try {
+            ChamadaVideoController::markPaidAndNotify($chamada->fresh());
+        } catch (\Throwable $e) {
+            Log::error('[CHAT] Falha ao enviar card pago da chamada:', [
+                'chamada_id' => $chamada->id,
+                'erro' => $e->getMessage(),
+            ]);
+        }
+
+        Log::info('[CHAT] Chamada de vídeo aprovada via webhook:', [
+            'chamada_id' => $chamada->id,
+            'uuid' => $chamada->uuid,
+        ]);
+
+        return response()->json(['message' => 'Webhook de chamada de vídeo processado com sucesso'], 200);
+    }
+
+    private function processarCheckoutSuccessChamadaVideo(Request $request)
+    {
+        $chamada = ChamadaVideo::where('order_nsu', $request->order_nsu)->first();
+
+        if (! $chamada) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Chamada de vídeo não encontrada',
+                'type' => 'video_call',
+            ], 404);
+        }
+
+        $chamada->update([
+            'capture_method' => $request->capture_method,
+            'transaction_nsu' => $request->transaction_nsu,
+            'invoice_slug' => $request->slug,
+            'receipt_url' => $request->receipt_url,
+        ]);
+
+        try {
+            $infinitePayResponse = Http::post('https://api.infinitepay.io/invoices/public/checkout/payment_check', [
+                'handle' => 'rehantunes06',
+                'order_nsu' => $request->order_nsu,
+                'transaction_nsu' => $request->transaction_nsu,
+                'slug' => $request->slug,
+            ]);
+
+            if (! $infinitePayResponse->successful()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Erro ao consultar status na InfinitePay',
+                    'type' => 'video_call',
+                ], 400);
+            }
+
+            $infinitePayData = $infinitePayResponse->json();
+            $wasApproved = $chamada->status === 'aprovado';
+
+            if (isset($infinitePayData['paid']) && $infinitePayData['paid'] && ! $wasApproved) {
+                DB::transaction(function () use ($chamada, $infinitePayData) {
+                    $chamada->update([
+                        'status' => 'aprovado',
+                        'payment_date' => now(),
+                        'paid_amount' => isset($infinitePayData['paid_amount'])
+                            ? $infinitePayData['paid_amount'] / 100
+                            : ($infinitePayData['amount'] ?? 0) / 100,
+                        'installments' => $infinitePayData['installments'] ?? $chamada->installments,
+                    ]);
+                });
+
+                try {
+                    ChamadaVideoController::markPaidAndNotify($chamada->fresh());
+                } catch (\Throwable $e) {
+                    Log::error('[CHAT] Falha ao enviar card pago (checkout success):', [
+                        'chamada_id' => $chamada->id,
+                        'erro' => $e->getMessage(),
+                    ]);
+                }
+            }
+
+            $chamada->refresh();
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Chamada de vídeo processada',
+                'type' => 'video_call',
+                'assinatura' => [
+                    'id' => $chamada->id,
+                    'status' => $chamada->status,
+                    'order_nsu' => $chamada->order_nsu,
+                    'transaction_nsu' => $chamada->transaction_nsu,
+                    'paid_amount' => $chamada->paid_amount,
+                    'titulo' => $chamada->titulo,
+                    'conversation_id' => $chamada->conversation_id,
+                ],
+                'infinitepay_response' => $infinitePayData,
+            ]);
+        } catch (\Exception $e) {
+            Log::error('[CHAT] Erro checkout success chamada vídeo:', ['erro' => $e->getMessage()]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Erro ao processar chamada de vídeo',
+                'type' => 'video_call',
             ], 500);
         }
     }

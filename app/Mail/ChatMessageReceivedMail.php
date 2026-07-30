@@ -33,6 +33,7 @@ class ChatMessageReceivedMail extends Mailable
             'image' => 'Enviou uma foto',
             'video' => 'Enviou um vídeo',
             'audio' => 'Enviou um áudio',
+            'video_call' => 'Enviou uma chamada de vídeo',
             default => \Illuminate\Support\Str::limit((string) $this->message->body, 120),
         };
 
