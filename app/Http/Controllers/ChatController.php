@@ -17,6 +17,7 @@ use App\Models\User;
 use App\Services\ChatLogger;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\ValidationException;
@@ -154,6 +155,205 @@ class ChatController extends Controller
         ]);
 
         return new ConversationResource($conversation);
+    }
+
+    public function broadcast(Request $request)
+    {
+        $user = $request->user();
+
+        if (! $user->isAdmin()) {
+            return response()->json(['message' => 'Apenas a administradora pode enviar mensagens em massa.'], 403);
+        }
+
+        $data = $request->validate([
+            'audience' => 'required|in:all,active,manual',
+            'user_ids' => 'nullable|array',
+            'user_ids.*' => 'integer|exists:users,id',
+            'titulo' => 'nullable|string|max:200',
+            'body' => 'nullable|string|max:5000',
+            'media' => 'nullable|file|mimes:mp3,ogg,m4a,mpeg,wav,aac,mpga,webm|max:10240',
+            'audio_duration' => 'nullable|integer|min:1|max:60',
+        ]);
+
+        $titulo = trim((string) ($data['titulo'] ?? ''));
+        $body = trim((string) ($data['body'] ?? ''));
+        $hasAudio = $request->hasFile('media');
+
+        if ($titulo === '' && $body === '' && ! $hasAudio) {
+            return response()->json([
+                'message' => 'Informe pelo menos um título, uma mensagem ou um áudio.',
+                'errors' => [
+                    'content' => ['Preencha título, mensagem ou anexe um áudio.'],
+                ],
+            ], 422);
+        }
+
+        if ($data['audience'] === 'manual' && empty($data['user_ids'])) {
+            return response()->json([
+                'message' => 'Selecione pelo menos um cliente.',
+                'errors' => ['user_ids' => ['Selecione pelo menos um cliente.']],
+            ], 422);
+        }
+
+        $recipientsQuery = User::query()->where('is_admin', false);
+
+        if ($data['audience'] === 'active') {
+            $hoje = now()->startOfDay();
+            $recipientsQuery->whereHas('assinaturas', function ($q) use ($hoje) {
+                $q->where('status', 'aprovado')
+                    ->where('data_inicio', '<=', $hoje)
+                    ->where('data_fim', '>=', $hoje);
+            });
+        } elseif ($data['audience'] === 'manual') {
+            $recipientsQuery->whereIn('id', $data['user_ids']);
+        }
+
+        $recipients = $recipientsQuery->get();
+
+        if ($recipients->isEmpty()) {
+            return response()->json([
+                'message' => 'Nenhum destinatário encontrado para o público selecionado.',
+            ], 422);
+        }
+
+        $textBody = null;
+        if ($titulo !== '' && $body !== '') {
+            $textBody = $titulo."\n\n".$body;
+        } elseif ($titulo !== '') {
+            $textBody = $titulo;
+        } elseif ($body !== '') {
+            $textBody = $body;
+        }
+
+        $audioBinary = null;
+        $audioExt = 'webm';
+        $audioDuration = (int) ($data['audio_duration'] ?? 0);
+
+        if ($hasAudio) {
+            $file = $request->file('media');
+            $audioBinary = file_get_contents($file->getRealPath());
+            $audioExt = $file->getClientOriginalExtension() ?: 'webm';
+            if ($audioDuration < 1) {
+                $audioDuration = 1;
+            }
+        }
+
+        $sent = 0;
+        $failed = 0;
+
+        foreach ($recipients as $subscriber) {
+            try {
+                $conversation = Conversation::query()->firstOrCreate(
+                    [
+                        'admin_id' => $user->id,
+                        'subscriber_id' => $subscriber->id,
+                    ]
+                );
+
+                if ($textBody !== null) {
+                    $message = Message::create([
+                        'conversation_id' => $conversation->id,
+                        'user_id' => $user->id,
+                        'type' => 'text',
+                        'body' => $textBody,
+                        'delivered_at' => now(),
+                    ]);
+                    $conversation->update(['last_message_at' => now()]);
+                    $message->load(['user', 'replyTo.user', 'likes']);
+
+                    broadcast(new MessageSent($message))->toOthers();
+                    broadcast(new ConversationUpdated(
+                        $conversation->id,
+                        $conversation->admin_id,
+                        $conversation->subscriber_id,
+                        [
+                            'unread_bump' => true,
+                            'sender' => [
+                                'id' => $user->id,
+                                'nome' => $user->nome,
+                                'apelido' => $user->apelido,
+                            ],
+                            'latest_message' => [
+                                'id' => $message->id,
+                                'type' => $message->type,
+                                'body' => $message->body,
+                                'user_id' => $message->user_id,
+                                'conversation_id' => $conversation->id,
+                                'created_at' => $message->created_at?->toIso8601String(),
+                            ],
+                        ]
+                    ));
+                }
+
+                if ($audioBinary !== null) {
+                    $mediaPath = 'chat/'.$conversation->id.'/'.time().'_'.uniqid().'.'.$audioExt;
+                    Storage::disk('s3')->put($mediaPath, $audioBinary, 'public');
+                    $mediaUrl = rtrim((string) env('AWS_URL'), '/').'/'.$mediaPath;
+
+                    $audioMessage = Message::create([
+                        'conversation_id' => $conversation->id,
+                        'user_id' => $user->id,
+                        'type' => 'audio',
+                        'body' => (string) $audioDuration,
+                        'media_path' => $mediaPath,
+                        'media_url' => $mediaUrl,
+                        'delivered_at' => now(),
+                    ]);
+                    $conversation->update(['last_message_at' => now()]);
+                    $audioMessage->load(['user', 'replyTo.user', 'likes']);
+
+                    broadcast(new MessageSent($audioMessage))->toOthers();
+                    broadcast(new ConversationUpdated(
+                        $conversation->id,
+                        $conversation->admin_id,
+                        $conversation->subscriber_id,
+                        [
+                            'unread_bump' => true,
+                            'sender' => [
+                                'id' => $user->id,
+                                'nome' => $user->nome,
+                                'apelido' => $user->apelido,
+                            ],
+                            'latest_message' => [
+                                'id' => $audioMessage->id,
+                                'type' => $audioMessage->type,
+                                'body' => 'Áudio',
+                                'user_id' => $audioMessage->user_id,
+                                'conversation_id' => $conversation->id,
+                                'created_at' => $audioMessage->created_at?->toIso8601String(),
+                            ],
+                        ]
+                    ));
+                }
+
+                $sent++;
+            } catch (\Throwable $e) {
+                $failed++;
+                Log::error('[CHAT] Broadcast falhou para assinante', [
+                    'subscriber_id' => $subscriber->id,
+                    'erro' => $e->getMessage(),
+                ]);
+            }
+        }
+
+        ChatLogger::info('Broadcast sent', [
+            'admin_id' => $user->id,
+            'audience' => $data['audience'],
+            'sent' => $sent,
+            'failed' => $failed,
+            'has_text' => $textBody !== null,
+            'has_audio' => $hasAudio,
+        ]);
+
+        return response()->json([
+            'success' => true,
+            'sent' => $sent,
+            'failed' => $failed,
+            'total' => $recipients->count(),
+            'message' => $sent > 0
+                ? "Mensagem enviada para {$sent} cliente(s)."
+                : 'Não foi possível enviar para nenhum cliente.',
+        ], $sent > 0 ? 200 : 400);
     }
 
     public function searchableUsers(Request $request)

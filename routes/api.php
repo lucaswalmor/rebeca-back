@@ -146,6 +146,7 @@ Route::middleware('auth:sanctum')
         Route::get('/conversations', 'index');
         Route::post('/conversations/open', 'openOrCreate');
         Route::post('/conversations/start', 'startWithSubscriber');
+        Route::post('/broadcast', 'broadcast');
         Route::get('/users', 'searchableUsers');
         Route::get('/conversations/{id}', 'show');
         Route::get('/conversations/{id}/messages', 'messages');
