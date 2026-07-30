@@ -34,9 +34,11 @@ class ChamadaVideoController extends Controller
             'titulo' => 'nullable|string|max:200',
             'data' => 'required|date',
             'horario' => ['required', 'string', 'regex:/^\d{2}:\d{2}$/'],
-            'valor' => 'required|numeric|min:0.01',
+            'valor' => 'required|numeric|min:1.01',
             'duracao_minutos' => 'required|integer|min:1|max:480',
             'meet_link' => 'nullable|url|max:500',
+        ], [
+            'valor.min' => 'O valor mínimo da chamada é R$ 1,01 (limite da InfinitePay).',
         ]);
 
         $titulo = trim((string) ($data['titulo'] ?? '')) ?: 'Chamada de vídeo com a beca';
