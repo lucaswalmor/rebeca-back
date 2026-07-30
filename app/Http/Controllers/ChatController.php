@@ -385,20 +385,30 @@ class ChatController extends Controller
         }
 
         $request->validate([
-            'type' => 'required|in:text,image,video',
+            'type' => 'required|in:text,image,video,audio',
             'body' => 'nullable|string|max:5000',
             'reply_to_id' => 'nullable|integer|exists:messages,id',
-            'media' => 'nullable|file|mimes:jpeg,jpg,png,gif,webp,mp4,webm,mov',
+            'media' => 'nullable|file|mimes:jpeg,jpg,png,gif,webp,mp4,webm,mov,mp3,ogg,m4a,mpeg,wav,aac,mpga',
         ]);
 
         $type = $request->input('type');
+        $maxAudioSeconds = (int) config('chat.audio_max_seconds', 60);
 
         if ($type === 'text' && blank($request->input('body'))) {
             throw ValidationException::withMessages(['body' => 'A mensagem de texto é obrigatória.']);
         }
 
-        if (in_array($type, ['image', 'video'], true) && ! $request->hasFile('media')) {
+        if (in_array($type, ['image', 'video', 'audio'], true) && ! $request->hasFile('media')) {
             throw ValidationException::withMessages(['media' => 'Arquivo de mídia é obrigatório.']);
+        }
+
+        if ($type === 'audio') {
+            $duration = (int) $request->input('body', 0);
+            if ($duration < 1 || $duration > $maxAudioSeconds) {
+                throw ValidationException::withMessages([
+                    'body' => "Áudio inválido. Duração máxima: {$maxAudioSeconds} segundos.",
+                ]);
+            }
         }
 
         if (! $user->isAdmin() && in_array($type, ['image', 'video'], true)) {
@@ -406,6 +416,7 @@ class ChatController extends Controller
                 return response()->json([
                     'message' => 'Você não tem créditos de mídia. Libere um pacote para enviar fotos/vídeos.',
                     'requires_media_pack' => true,
+                    'package_needed' => 'media',
                     'media_credits' => 0,
                 ], 403);
             }
@@ -420,6 +431,25 @@ class ChatController extends Controller
 
                 throw ValidationException::withMessages([
                     'media' => "Arquivo muito grande. Limite para assinantes: {$limitLabel}.",
+                ]);
+            }
+        }
+
+        if (! $user->isAdmin() && $type === 'audio') {
+            if ((int) $user->chat_audio_credits < 1) {
+                return response()->json([
+                    'message' => 'Você não tem créditos de áudio. Libere um pacote para enviar áudios.',
+                    'requires_media_pack' => true,
+                    'package_needed' => 'audio',
+                    'audio_credits' => 0,
+                ], 403);
+            }
+
+            $file = $request->file('media');
+            $maxKb = (int) config('chat.subscriber_audio_max_kb', 10 * 1024);
+            if ($file->getSize() > $maxKb * 1024) {
+                throw ValidationException::withMessages([
+                    'media' => 'Áudio muito grande. Limite: 10MB.',
                 ]);
             }
         }
@@ -440,7 +470,8 @@ class ChatController extends Controller
 
         if ($request->hasFile('media')) {
             $file = $request->file('media');
-            $mediaPath = 'chat/'.$conversation->id.'/'.time().'_'.$file->getClientOriginalName();
+            $ext = $file->getClientOriginalExtension() ?: ($type === 'audio' ? 'webm' : 'bin');
+            $mediaPath = 'chat/'.$conversation->id.'/'.time().'_'.uniqid().'.'.$ext;
             Storage::disk('s3')->put($mediaPath, file_get_contents($file->getRealPath()), 'public');
             $mediaUrl = rtrim((string) env('AWS_URL'), '/').'/'.$mediaPath;
         }
@@ -455,6 +486,17 @@ class ChatController extends Controller
                 }
                 $locked->decrement('chat_media_credits');
                 $user->chat_media_credits = $locked->chat_media_credits;
+            }
+
+            if (! $user->isAdmin() && $type === 'audio') {
+                $locked = User::query()->where('id', $user->id)->lockForUpdate()->first();
+                if ((int) $locked->chat_audio_credits < 1) {
+                    throw ValidationException::withMessages([
+                        'media' => 'Créditos de áudio insuficientes.',
+                    ]);
+                }
+                $locked->decrement('chat_audio_credits');
+                $user->chat_audio_credits = $locked->chat_audio_credits;
             }
 
             $message = Message::create([
@@ -507,8 +549,11 @@ class ChatController extends Controller
             'user_id' => $user->id,
         ]);
 
+        $fresh = $user->fresh();
+
         return (new MessageResource($message))->additional([
-            'media_credits' => (int) $user->fresh()->chat_media_credits,
+            'media_credits' => (int) $fresh->chat_media_credits,
+            'audio_credits' => (int) $fresh->chat_audio_credits,
         ]);
     }
 
@@ -665,8 +710,12 @@ class ChatController extends Controller
 
         return response()->json([
             'media_credits' => (int) $user->chat_media_credits,
+            'audio_credits' => (int) $user->chat_audio_credits,
             'credits_per_pack' => (int) config('chat.media_credits_per_pack', 5),
+            'audio_credits_per_pack' => (int) config('chat.audio_credits_per_pack', 5),
+            'audio_max_seconds' => (int) config('chat.audio_max_seconds', 60),
             'price' => $admin?->valor_pacote_midia_chat,
+            'audio_price' => $admin?->valor_pacote_audio_chat,
             'can_access_chat' => $user->isAdmin() || $user->hasAssinaturaAprovadaAtiva(),
             'wallpaper_desktop' => $admin?->chat_wallpaper_desktop,
             'wallpaper_mobile' => $admin?->chat_wallpaper_mobile,

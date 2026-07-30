@@ -45,7 +45,9 @@ class User extends Authenticatable
         'valor_desconto_trimestral',
         'valor_desconto_semestral',
         'valor_pacote_midia_chat',
+        'valor_pacote_audio_chat',
         'chat_media_credits',
+        'chat_audio_credits',
         'last_seen_at',
         'chat_enquete_voted',
     ];
@@ -78,7 +80,9 @@ class User extends Authenticatable
             'valor_desconto_trimestral' => 'decimal:2',
             'valor_desconto_semestral' => 'decimal:2',
             'valor_pacote_midia_chat' => 'decimal:2',
+            'valor_pacote_audio_chat' => 'decimal:2',
             'chat_media_credits' => 'integer',
+            'chat_audio_credits' => 'integer',
             'last_seen_at' => 'datetime',
         ];
     }

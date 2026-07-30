@@ -25,18 +25,34 @@ class ChatMediaPurchaseController extends Controller
             ], 403);
         }
 
-        $admin = ChatLogger::adminUser();
-        $valor = (float) ($admin?->valor_pacote_midia_chat ?? 0);
+        $data = $request->validate([
+            'package_type' => 'required|in:media,audio',
+            'quantity' => 'required|integer|min:1|max:99',
+        ]);
 
-        if ($valor <= 0) {
+        $packageType = $data['package_type'];
+        $quantity = (int) $data['quantity'];
+
+        $admin = ChatLogger::adminUser();
+        $unitPrice = $packageType === 'audio'
+            ? (float) ($admin?->valor_pacote_audio_chat ?? 0)
+            : (float) ($admin?->valor_pacote_midia_chat ?? 0);
+
+        if ($unitPrice <= 0) {
+            $label = $packageType === 'audio' ? 'áudio' : 'foto/vídeo';
+
             return response()->json([
-                'message' => 'Pacote de mídia ainda não foi configurado pela administradora.',
+                'message' => "Pacote de {$label} ainda não foi configurado pela administradora.",
             ], 422);
         }
 
-        $credits = (int) config('chat.media_credits_per_pack', 5);
+        $creditsPerPack = $packageType === 'audio'
+            ? (int) config('chat.audio_credits_per_pack', 5)
+            : (int) config('chat.media_credits_per_pack', 5);
 
-        // Cancela pendentes: links antigos podem ter redirect/webhook desatualizados
+        $credits = $creditsPerPack * $quantity;
+        $valorTotal = round($unitPrice * $quantity, 2);
+
         ChatMediaPurchase::query()
             ->where('user_id', $user->id)
             ->where('status', 'pendente')
@@ -44,13 +60,21 @@ class ChatMediaPurchaseController extends Controller
 
         $purchase = ChatMediaPurchase::create([
             'user_id' => $user->id,
-            'valor' => $valor,
+            'package_type' => $packageType,
+            'valor' => $valorTotal,
             'credits' => $credits,
+            'quantity' => $quantity,
             'status' => 'pendente',
         ]);
 
-        $orderNsu = 'chatmedia-'.$purchase->id.'-'.time();
+        $prefix = $packageType === 'audio' ? 'chataudio' : 'chatmedia';
+        $orderNsu = $prefix.'-'.$purchase->id.'-'.time();
         $purchase->update(['order_nsu' => $orderNsu]);
+
+        $kindLabel = $packageType === 'audio' ? 'áudio' : 'foto/vídeo';
+        $description = $quantity === 1
+            ? "Pacote chat - {$creditsPerPack} envios de {$kindLabel}"
+            : "{$quantity} pacotes chat - {$credits} envios de {$kindLabel}";
 
         $payload = [
             'handle' => config('services.infinitepay.handle'),
@@ -59,23 +83,24 @@ class ChatMediaPurchaseController extends Controller
             'order_nsu' => $orderNsu,
             'items' => [
                 [
-                    'quantity' => 1,
-                    'price' => intval($valor * 100),
-                    'description' => "Pacote chat - {$credits} envios de foto/vídeo",
+                    'quantity' => $quantity,
+                    'price' => intval(round($unitPrice * 100)),
+                    'description' => $description,
                 ],
             ],
         ];
 
-        Log::info('[CHAT] Payload InfinitePay pacote mídia:', [
+        Log::info('[CHAT] Payload InfinitePay pacote chat:', [
             'payload' => $payload,
             'user_id' => $user->id,
+            'package_type' => $packageType,
         ]);
 
         $response = Http::post('https://api.infinitepay.io/invoices/public/checkout/links', $payload);
 
         if (! $response->successful()) {
             $purchase->delete();
-            Log::error('[CHAT] Erro InfinitePay pacote mídia:', [
+            Log::error('[CHAT] Erro InfinitePay pacote chat:', [
                 'status' => $response->status(),
                 'body' => $response->body(),
             ]);
@@ -87,8 +112,8 @@ class ChatMediaPurchaseController extends Controller
             ], 400);
         }
 
-        $data = $response->json();
-        $link = $this->extractLink($data);
+        $responseData = $response->json();
+        $link = $this->extractLink($responseData);
 
         if (! $link) {
             $purchase->delete();
@@ -96,7 +121,7 @@ class ChatMediaPurchaseController extends Controller
             return response()->json([
                 'success' => false,
                 'message' => 'Link de pagamento não encontrado na resposta da API',
-                'response_data' => $data,
+                'response_data' => $responseData,
             ], 400);
         }
 
@@ -107,8 +132,12 @@ class ChatMediaPurchaseController extends Controller
             'link' => $link,
             'purchase_id' => $purchase->id,
             'order_nsu' => $orderNsu,
+            'package_type' => $packageType,
+            'quantity' => $quantity,
             'credits' => $credits,
-            'valor' => $valor,
+            'credits_per_pack' => $creditsPerPack,
+            'unit_price' => $unitPrice,
+            'valor' => $valorTotal,
         ]);
     }
 

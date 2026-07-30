@@ -12,8 +12,10 @@ class ChatMediaPurchase extends Model
 
     protected $fillable = [
         'user_id',
+        'package_type',
         'valor',
         'credits',
+        'quantity',
         'status',
         'order_nsu',
         'link_pagamento',

@@ -307,8 +307,11 @@ class AssinaturaController extends Controller
                 return $this->processarWebhookPostCompra($request);
             }
 
-            // Pacote de mídia do chat (order_nsu começa com chatmedia-)
-            if (str_starts_with($request->order_nsu, 'chatmedia-')) {
+            // Pacote de mídia/áudio do chat
+            if (
+                str_starts_with($request->order_nsu, 'chatmedia-')
+                || str_starts_with($request->order_nsu, 'chataudio-')
+            ) {
                 return $this->processarWebhookChatMedia($request);
             }
 
@@ -397,8 +400,11 @@ class AssinaturaController extends Controller
                 return $this->processarCheckoutSuccessPostCompra($request);
             }
 
-            // Pacote de mídia do chat
-            if (str_starts_with($request->order_nsu, 'chatmedia-')) {
+            // Pacote de mídia/áudio do chat
+            if (
+                str_starts_with($request->order_nsu, 'chatmedia-')
+                || str_starts_with($request->order_nsu, 'chataudio-')
+            ) {
                 return $this->processarCheckoutSuccessChatMedia($request);
             }
 
@@ -740,14 +746,23 @@ class AssinaturaController extends Controller
         }
     }
 
+    private function creditChatPackagePurchase(ChatMediaPurchase $purchase): void
+    {
+        $field = ($purchase->package_type ?? 'media') === 'audio'
+            ? 'chat_audio_credits'
+            : 'chat_media_credits';
+
+        User::query()->where('id', $purchase->user_id)->increment($field, $purchase->credits);
+    }
+
     private function processarWebhookChatMedia(Request $request)
     {
         $purchase = ChatMediaPurchase::where('order_nsu', $request->order_nsu)->first();
 
         if (! $purchase) {
-            Log::warning('[CHAT] Compra de mídia não encontrada:', ['order_nsu' => $request->order_nsu]);
+            Log::warning('[CHAT] Compra de pacote chat não encontrada:', ['order_nsu' => $request->order_nsu]);
 
-            return response()->json(['message' => 'Compra de mídia não encontrada'], 404);
+            return response()->json(['message' => 'Compra de pacote não encontrada'], 404);
         }
 
         if ($purchase->status === 'aprovado') {
@@ -766,16 +781,17 @@ class AssinaturaController extends Controller
                 'payment_date' => now(),
             ]);
 
-            User::query()->where('id', $purchase->user_id)->increment('chat_media_credits', $purchase->credits);
+            $this->creditChatPackagePurchase($purchase);
         });
 
-        Log::info('[CHAT] Pacote de mídia aprovado via webhook:', [
+        Log::info('[CHAT] Pacote chat aprovado via webhook:', [
             'purchase_id' => $purchase->id,
             'user_id' => $purchase->user_id,
+            'package_type' => $purchase->package_type,
             'credits' => $purchase->credits,
         ]);
 
-        return response()->json(['message' => 'Webhook de pacote de mídia processado com sucesso'], 200);
+        return response()->json(['message' => 'Webhook de pacote chat processado com sucesso'], 200);
     }
 
     private function processarCheckoutSuccessChatMedia(Request $request)
@@ -785,7 +801,7 @@ class AssinaturaController extends Controller
         if (! $purchase) {
             return response()->json([
                 'success' => false,
-                'message' => 'Compra de mídia não encontrada',
+                'message' => 'Compra de pacote não encontrada',
                 'type' => 'chat_media',
             ], 404);
         }
@@ -827,7 +843,7 @@ class AssinaturaController extends Controller
                         'installments' => $infinitePayData['installments'] ?? $purchase->installments,
                     ]);
 
-                    User::query()->where('id', $purchase->user_id)->increment('chat_media_credits', $purchase->credits);
+                    $this->creditChatPackagePurchase($purchase);
                 });
             }
 
@@ -836,7 +852,7 @@ class AssinaturaController extends Controller
 
             return response()->json([
                 'success' => true,
-                'message' => 'Pacote de mídia processado',
+                'message' => 'Pacote chat processado',
                 'type' => 'chat_media',
                 'assinatura' => [
                     'id' => $purchase->id,
@@ -845,16 +861,19 @@ class AssinaturaController extends Controller
                     'transaction_nsu' => $purchase->transaction_nsu,
                     'paid_amount' => $purchase->paid_amount,
                     'credits' => $purchase->credits,
+                    'package_type' => $purchase->package_type ?? 'media',
+                    'quantity' => $purchase->quantity ?? 1,
                     'media_credits' => (int) ($user?->chat_media_credits ?? 0),
+                    'audio_credits' => (int) ($user?->chat_audio_credits ?? 0),
                 ],
                 'infinitepay_response' => $infinitePayData,
             ]);
         } catch (\Exception $e) {
-            Log::error('[CHAT] Erro checkout success mídia:', ['erro' => $e->getMessage()]);
+            Log::error('[CHAT] Erro checkout success pacote chat:', ['erro' => $e->getMessage()]);
 
             return response()->json([
                 'success' => false,
-                'message' => 'Erro ao processar pacote de mídia',
+                'message' => 'Erro ao processar pacote chat',
                 'type' => 'chat_media',
             ], 500);
         }

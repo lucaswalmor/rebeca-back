@@ -32,6 +32,7 @@ class ChatMessageReceivedMail extends Mailable
         $preview = match ($this->message->type) {
             'image' => 'Enviou uma foto',
             'video' => 'Enviou um vídeo',
+            'audio' => 'Enviou um áudio',
             default => \Illuminate\Support\Str::limit((string) $this->message->body, 120),
         };
 
