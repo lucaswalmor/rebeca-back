@@ -476,11 +476,17 @@ class ChatController extends Controller
             $conversation->subscriber_id,
             [
                 'unread_bump' => true,
+                'sender' => [
+                    'id' => $user->id,
+                    'nome' => $user->nome,
+                    'apelido' => $user->apelido,
+                ],
                 'latest_message' => [
                     'id' => $message->id,
                     'type' => $message->type,
                     'body' => $message->body,
                     'user_id' => $message->user_id,
+                    'conversation_id' => $conversation->id,
                     'created_at' => $message->created_at?->toIso8601String(),
                 ],
             ]

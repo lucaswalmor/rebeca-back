@@ -21,9 +21,19 @@ class MessageSent implements ShouldBroadcastNow
 
     public function broadcastOn(): array
     {
-        return [
+        $this->message->loadMissing('conversation');
+
+        $channels = [
             new PrivateChannel('chat.'.$this->message->conversation_id),
         ];
+
+        $conversation = $this->message->conversation;
+        if ($conversation) {
+            $channels[] = new PrivateChannel('chat.inbox.'.$conversation->admin_id);
+            $channels[] = new PrivateChannel('chat.inbox.'.$conversation->subscriber_id);
+        }
+
+        return $channels;
     }
 
     public function broadcastAs(): string
