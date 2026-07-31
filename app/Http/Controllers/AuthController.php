@@ -92,6 +92,7 @@ class AuthController extends Controller
             'is_admin' => $user->is_admin,
             'apelido' => $user->apelido,
             'path_img_avatar' => $user->path_img_avatar,
+            'notify_new_posts_email' => (bool) $user->notify_new_posts_email,
             'assinatura' => $assinaturaAtiva,
             'status_assinatura_descricao' => $statusAssinaturaDescricao,
             'status_assinatura' => $statusAssinaturaReal,

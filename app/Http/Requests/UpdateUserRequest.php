@@ -18,7 +18,7 @@ class UpdateUserRequest extends FormRequest
     /**
      * Get the validation rules that apply to the request.
      *
-     * @return array<string, \Illuminate\Contracts\Validation\ValidationRule|array<mixed>|string>a
+     * @return array<string, \Illuminate\Contracts\Validation\ValidationRule|array<mixed>|string>
      */
     public function rules(): array
     {
@@ -33,6 +33,7 @@ class UpdateUserRequest extends FormRequest
             'telefone' => 'sometimes|string|max:20',
             'data_nascimento' => 'sometimes|date',
             'is_admin' => 'sometimes|boolean',
+            'notify_new_posts_email' => 'sometimes|boolean',
             'instagram' => 'nullable|string|max:255',
             'telegram' => 'nullable|string|max:255',
             'whatsapp' => 'nullable|string|max:255',

@@ -21,6 +21,7 @@ class User extends Authenticatable
     protected $fillable = [
         'is_admin',
         'is_blocked',
+        'notify_new_posts_email',
         'chat_blocked',
         'nome',
         'sobrenome',
@@ -84,6 +85,7 @@ class User extends Authenticatable
             'password' => 'hashed',
             'is_admin' => 'boolean',
             'is_blocked' => 'boolean',
+            'notify_new_posts_email' => 'boolean',
             'chat_blocked' => 'boolean',
             'data_nascimento' => 'date',
             'valor_assinatura_mensal' => 'decimal:2',

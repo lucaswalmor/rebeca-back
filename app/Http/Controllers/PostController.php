@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Http\Requests\StorePostRequest;
 use App\Http\Requests\UpdatePostRequest;
+use App\Jobs\NotifySubscribersOfNewPost;
 use App\Models\Post;
 use App\Models\PostCompra;
 use App\Models\PostMedia;
@@ -105,6 +106,10 @@ class PostController extends Controller
         $validated['status'] = $validated['status'] ?? 'ativo';
         $validated['is_fixed'] = false;
         $post = Post::create($validated);
+
+        if ($post->status === 'ativo') {
+            NotifySubscribersOfNewPost::dispatchAfterResponse($post->id);
+        }
 
         return response()->json([
             'message' => 'Post criado com sucesso.',
