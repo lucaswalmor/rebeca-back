@@ -6,6 +6,7 @@ use App\Http\Controllers\AdminAssinantesController;
 use App\Http\Controllers\ChatController;
 use App\Http\Controllers\ChatMediaPurchaseController;
 use App\Http\Controllers\ChamadaVideoController;
+use App\Http\Controllers\CreditController;
 use App\Http\Controllers\PresentinhoController;
 use App\Http\Controllers\ConteudoExclusivoController;
 use App\Http\Controllers\CommentController;
@@ -71,11 +72,20 @@ Route::middleware('auth:sanctum')
         Route::post('/posts/{id}/toggle-status', 'toggleStatus');
     });
 
-// Compra de conteúdo avulso
+// Compra de conteúdo avulso (agora via créditos)
 Route::middleware('auth:sanctum')
     ->controller(PostCompraController::class)
     ->group(function () {
         Route::post('/posts/{id}/comprar', 'comprar');
+    });
+
+// Carteira de créditos
+Route::middleware('auth:sanctum')
+    ->controller(CreditController::class)
+    ->group(function () {
+        Route::get('/creditos', 'saldo');
+        Route::get('/consultar-credito', 'saldo');
+        Route::post('/creditos/gerar-link', 'gerarLinkRecarga');
     });
 
 // Rotas de likes

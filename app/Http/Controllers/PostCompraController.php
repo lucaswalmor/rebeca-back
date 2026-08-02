@@ -2,18 +2,21 @@
 
 namespace App\Http\Controllers;
 
+use App\Exceptions\InsufficientCreditsException;
 use App\Models\Post;
 use App\Models\PostCompra;
+use App\Services\CreditService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
-use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
 class PostCompraController extends Controller
 {
+    public function __construct(private CreditService $credits) {}
+
     /**
-     * Gera link de pagamento InfinitePay para comprar o conteúdo do post.
-     * Exige assinatura ativa. Compra fica vinculada ao user_id + post_id.
+     * Desbloqueia o conteúdo do post debitando créditos do usuário.
      */
     public function comprar(Request $request, string $id)
     {
@@ -24,10 +27,21 @@ class PostCompraController extends Controller
             return response()->json([
                 'success' => false,
                 'message' => 'É necessário ter uma assinatura ativa para comprar conteúdos.',
+                'requires_subscription' => true,
             ], 403);
         }
 
-        if ((float) $post->preco <= 0) {
+        if ($user->isAdmin()) {
+            return response()->json([
+                'success' => true,
+                'already_owned' => true,
+                'message' => 'Administradora tem acesso total.',
+            ]);
+        }
+
+        $valor = round((float) $post->preco, 2);
+
+        if ($valor <= 0) {
             return response()->json([
                 'success' => false,
                 'message' => 'Este conteúdo ainda não possui preço definido.',
@@ -41,117 +55,70 @@ class PostCompraController extends Controller
 
         if ($compraAprovada) {
             return response()->json([
-                'success' => false,
-                'message' => 'Você já comprou este conteúdo.',
-            ], 422);
-        }
-
-        // Reutilizar compra pendente existente (com ou sem link)
-        $compra = PostCompra::where('user_id', $user->id)
-            ->where('post_id', $post->id)
-            ->where('status', 'pendente')
-            ->first();
-
-        if ($compra && $compra->link_pagamento) {
-            return response()->json([
                 'success' => true,
-                'link' => $compra->link_pagamento,
-                'compra_id' => $compra->id,
-                'order_nsu' => $compra->order_nsu,
+                'already_owned' => true,
+                'message' => 'Você já comprou este conteúdo.',
+                'creditos' => $this->credits->balance($user),
             ]);
         }
 
-        if (! $compra) {
-            $compra = PostCompra::create([
-                'user_id' => $user->id,
+        try {
+            $compra = DB::transaction(function () use ($user, $post, $valor) {
+                $existing = PostCompra::where('user_id', $user->id)
+                    ->where('post_id', $post->id)
+                    ->where('status', 'aprovado')
+                    ->lockForUpdate()
+                    ->first();
+
+                if ($existing) {
+                    return $existing;
+                }
+
+                $compra = PostCompra::create([
+                    'user_id' => $user->id,
+                    'post_id' => $post->id,
+                    'status' => 'aprovado',
+                    'valor' => $valor,
+                    'paid_amount' => $valor,
+                    'payment_date' => now(),
+                    'capture_method' => 'creditos',
+                    'order_nsu' => 'post-credito-'.$post->id.'-'.$user->id.'-'.time(),
+                ]);
+
+                $this->credits->debit(
+                    $user,
+                    $valor,
+                    'post_compra',
+                    $compra->id,
+                    'Desbloqueio do post #'.$post->id,
+                );
+
+                return $compra;
+            });
+        } catch (InsufficientCreditsException $e) {
+            return $e->render();
+        } catch (\Throwable $e) {
+            Log::error('[CREDITOS] Erro ao comprar post com créditos:', [
                 'post_id' => $post->id,
-                'status' => 'pendente',
-                'valor' => $post->preco,
-            ]);
-        }
-
-        $orderNsu = 'post-'.$compra->id.'-'.time();
-        $compra->update([
-            'order_nsu' => $orderNsu,
-            'valor' => $post->preco,
-        ]);
-
-        $payload = [
-            'handle' => config('services.infinitepay.handle'),
-            'redirect_url' => rtrim(config('services.infinitepay.frontend_url'), '/').'/checkout/success',
-            'webhook_url' => config('services.infinitepay.webhook_url'),
-            'order_nsu' => $orderNsu,
-            'items' => [
-                [
-                    'quantity' => 1,
-                    'price' => (int) round(((float) $post->preco) * 100),
-                    'description' => 'Conteúdo exclusivo #'.$post->id,
-                ],
-            ],
-        ];
-
-        Log::info('Payload InfinitePay compra de post:', [
-            'payload' => $payload,
-            'post_id' => $post->id,
-            'user_id' => $user->id,
-        ]);
-
-        $response = Http::post('https://api.infinitepay.io/invoices/public/checkout/links', $payload);
-
-        if (! $response->successful()) {
-            Log::error('Erro InfinitePay compra de post:', [
-                'status' => $response->status(),
-                'body' => $response->body(),
+                'user_id' => $user->id,
+                'erro' => $e->getMessage(),
             ]);
 
             return response()->json([
                 'success' => false,
-                'message' => 'Erro ao gerar link de pagamento.',
-            ], 400);
+                'message' => 'Erro ao desbloquear conteúdo.',
+            ], 500);
         }
 
-        $data = $response->json();
-        $link = $this->extractCheckoutLink($data);
-
-        if (! $link) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Link de pagamento não encontrado na resposta da API.',
-                'response_data' => $data,
-            ], 400);
-        }
-
-        $compra->update(['link_pagamento' => $link]);
+        $saldo = $this->credits->balance($user);
 
         return response()->json([
             'success' => true,
-            'link' => $link,
+            'unlocked' => true,
             'compra_id' => $compra->id,
-            'order_nsu' => $orderNsu,
+            'valor' => $valor,
+            'creditos' => $saldo,
+            'message' => 'Conteúdo desbloqueado com créditos.',
         ]);
-    }
-
-    /**
-     * @param  array<string, mixed>  $data
-     */
-    private function extractCheckoutLink(array $data): ?string
-    {
-        $possibleKeys = ['link', 'url', 'checkout_link', 'checkout_url', 'payment_url', 'redirect_url'];
-
-        foreach ($possibleKeys as $key) {
-            if (isset($data[$key]) && is_string($data[$key])) {
-                return $data[$key];
-            }
-        }
-
-        if (isset($data['data']) && is_array($data['data'])) {
-            foreach ($possibleKeys as $key) {
-                if (isset($data['data'][$key]) && is_string($data['data'][$key])) {
-                    return $data['data'][$key];
-                }
-            }
-        }
-
-        return null;
     }
 }

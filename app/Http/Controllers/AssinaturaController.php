@@ -6,9 +6,11 @@ use App\Models\Assinatura;
 use App\Models\ChamadaVideo;
 use App\Models\ChatMediaPurchase;
 use App\Models\ConteudoExclusivo;
+use App\Models\CreditPurchase;
 use App\Models\PostCompra;
 use App\Models\Presentinho;
 use App\Models\User;
+use App\Services\CreditService;
 use App\Services\WelcomeMessageService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -311,6 +313,11 @@ class AssinaturaController extends Controller
                 return $this->processarWebhookPostCompra($request);
             }
 
+            // Recarga de créditos (wallet)
+            if (str_starts_with($request->order_nsu, 'credito-')) {
+                return $this->processarWebhookCredito($request);
+            }
+
             // Pacote de mídia/áudio do chat
             if (
                 str_starts_with($request->order_nsu, 'chatmedia-')
@@ -416,6 +423,11 @@ class AssinaturaController extends Controller
             // Compra de post avulso
             if (str_starts_with($request->order_nsu, 'post-')) {
                 return $this->processarCheckoutSuccessPostCompra($request);
+            }
+
+            // Recarga de créditos (wallet)
+            if (str_starts_with($request->order_nsu, 'credito-')) {
+                return $this->processarCheckoutSuccessCredito($request);
             }
 
             // Pacote de mídia/áudio do chat
@@ -814,6 +826,146 @@ class AssinaturaController extends Controller
             : 'chat_media_credits';
 
         User::query()->where('id', $purchase->user_id)->increment($field, $purchase->credits);
+    }
+
+    private function processarWebhookCredito(Request $request)
+    {
+        $purchase = CreditPurchase::where('order_nsu', $request->order_nsu)->first();
+
+        if (! $purchase) {
+            Log::warning('[CREDITOS] Recarga não encontrada:', ['order_nsu' => $request->order_nsu]);
+
+            return response()->json(['message' => 'Recarga não encontrada'], 404);
+        }
+
+        if ($purchase->status === 'aprovado') {
+            return response()->json(['message' => 'Webhook já processado'], 200);
+        }
+
+        DB::transaction(function () use ($request) {
+            $purchase = CreditPurchase::where('order_nsu', $request->order_nsu)->lockForUpdate()->first();
+            if (! $purchase || $purchase->status === 'aprovado') {
+                return;
+            }
+
+            $purchase->update([
+                'status' => 'aprovado',
+                'transaction_nsu' => $request->transaction_nsu,
+                'invoice_slug' => $request->invoice_slug,
+                'receipt_url' => $request->receipt_url ?? null,
+                'paid_amount' => $request->paid_amount / 100,
+                'installments' => $request->installments,
+                'capture_method' => $request->capture_method,
+                'payment_date' => now(),
+            ]);
+
+            $user = User::findOrFail($purchase->user_id);
+            app(CreditService::class)->credit(
+                $user,
+                (float) $purchase->valor,
+                'recarga',
+                $purchase->id,
+                'Recarga de créditos via InfinitePay',
+                $purchase->order_nsu,
+            );
+        });
+
+        Log::info('[CREDITOS] Recarga aprovada via webhook:', [
+            'order_nsu' => $request->order_nsu,
+        ]);
+
+        return response()->json(['message' => 'Webhook de recarga processado com sucesso'], 200);
+    }
+
+    private function processarCheckoutSuccessCredito(Request $request)
+    {
+        $purchase = CreditPurchase::where('order_nsu', $request->order_nsu)->first();
+
+        if (! $purchase) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Recarga não encontrada',
+                'type' => 'credito',
+            ], 404);
+        }
+
+        $purchase->update([
+            'capture_method' => $request->capture_method,
+            'transaction_nsu' => $request->transaction_nsu,
+            'invoice_slug' => $request->slug,
+            'receipt_url' => $request->receipt_url,
+        ]);
+
+        try {
+            $infinitePayResponse = Http::post('https://api.infinitepay.io/invoices/public/checkout/payment_check', [
+                'handle' => config('services.infinitepay.handle', 'rehantunes06'),
+                'order_nsu' => $request->order_nsu,
+                'transaction_nsu' => $request->transaction_nsu,
+                'slug' => $request->slug,
+            ]);
+
+            if (! $infinitePayResponse->successful()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Erro ao consultar status na InfinitePay',
+                    'type' => 'credito',
+                ], 400);
+            }
+
+            $infinitePayData = $infinitePayResponse->json();
+            $paid = ! empty($infinitePayData['paid']);
+
+            if ($paid && $purchase->status !== 'aprovado') {
+                DB::transaction(function () use ($request, $infinitePayData) {
+                    $purchase = CreditPurchase::where('order_nsu', $request->order_nsu)->lockForUpdate()->first();
+                    if (! $purchase || $purchase->status === 'aprovado') {
+                        return;
+                    }
+
+                    $purchase->update([
+                        'status' => 'aprovado',
+                        'payment_date' => now(),
+                        'paid_amount' => isset($infinitePayData['paid_amount'])
+                            ? $infinitePayData['paid_amount'] / 100
+                            : ($infinitePayData['amount'] ?? 0) / 100,
+                        'installments' => $infinitePayData['installments'] ?? $purchase->installments,
+                    ]);
+
+                    $user = User::findOrFail($purchase->user_id);
+                    app(CreditService::class)->credit(
+                        $user,
+                        (float) $purchase->valor,
+                        'recarga',
+                        $purchase->id,
+                        'Recarga de créditos via InfinitePay',
+                        $purchase->order_nsu,
+                    );
+                });
+            }
+
+            $purchase->refresh();
+            $user = User::find($purchase->user_id);
+
+            return response()->json($this->withCheckoutAuth([
+                'success' => true,
+                'type' => 'credito',
+                'paid' => $purchase->status === 'aprovado',
+                'data' => [
+                    'id' => $purchase->id,
+                    'status' => $purchase->status,
+                    'valor' => $purchase->valor,
+                    'creditos' => $user ? round((float) $user->fresh()->creditos, 2) : null,
+                ],
+            ], $user, $purchase->status === 'aprovado'));
+        } catch (\Throwable $e) {
+            Log::error('[CREDITOS] Erro checkout success recarga:', ['erro' => $e->getMessage()]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Erro ao processar recarga',
+                'type' => 'credito',
+            ], 500);
+        }
     }
 
     private function processarWebhookChatMedia(Request $request)

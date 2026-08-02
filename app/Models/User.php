@@ -59,6 +59,7 @@ class User extends Authenticatable
         'valor_video_exclusivo_chat',
         'chat_media_credits',
         'chat_audio_credits',
+        'creditos',
         'last_seen_at',
         'chat_welcome_sent_at',
     ];
@@ -99,6 +100,7 @@ class User extends Authenticatable
             'valor_video_exclusivo_chat' => 'decimal:2',
             'chat_media_credits' => 'integer',
             'chat_audio_credits' => 'integer',
+            'creditos' => 'decimal:2',
             'welcome_audio_duration' => 'integer',
             'last_seen_at' => 'datetime',
             'chat_welcome_sent_at' => 'datetime',

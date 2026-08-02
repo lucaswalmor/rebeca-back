@@ -52,6 +52,7 @@ class AuthController extends Controller
         if (! $user->isAdmin()) {
             $userData['chat_media_credits'] = (int) $user->chat_media_credits;
             $userData['chat_audio_credits'] = (int) $user->chat_audio_credits;
+            $userData['creditos'] = round((float) $user->creditos, 2);
         }
 
         return [
@@ -96,6 +97,7 @@ class AuthController extends Controller
             'assinatura' => $assinaturaAtiva,
             'status_assinatura_descricao' => $statusAssinaturaDescricao,
             'status_assinatura' => $statusAssinaturaReal,
+            'creditos' => round((float) $user->creditos, 2),
         ];
     }
 

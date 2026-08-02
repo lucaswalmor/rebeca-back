@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Exceptions\InsufficientCreditsException;
 use App\Events\ConversationUpdated;
 use App\Events\MessageDeleted;
 use App\Events\MessageLiked;
@@ -15,6 +16,7 @@ use App\Models\Message;
 use App\Models\MessageLike;
 use App\Models\User;
 use App\Services\ChatLogger;
+use App\Services\CreditService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -24,6 +26,8 @@ use Illuminate\Validation\ValidationException;
 
 class ChatController extends Controller
 {
+    public function __construct(private CreditService $creditService) {}
+
     public function heartbeat(Request $request)
     {
         $user = $request->user();
@@ -815,13 +819,20 @@ class ChatController extends Controller
         }
 
         if (! $user->isAdmin() && in_array($type, ['image', 'video'], true)) {
-            if ((int) $user->chat_media_credits < 1) {
+            $cost = $this->creditService->chatSendCost('media');
+            $hasUnit = (int) $user->chat_media_credits >= 1;
+            $hasWallet = round((float) $user->creditos, 2) >= $cost && $cost > 0;
+
+            if (! $hasUnit && ! $hasWallet) {
                 return response()->json([
-                    'message' => 'Você não tem créditos de mídia. Libere um pacote para enviar fotos/vídeos.',
+                    'message' => 'Saldo insuficiente para enviar foto/vídeo. Recarregue seus créditos.',
+                    'requires_credits' => true,
                     'requires_media_pack' => true,
                     'package_needed' => 'media',
-                    'media_credits' => 0,
-                ], 403);
+                    'creditos' => round((float) $user->creditos, 2),
+                    'valor_necessario' => $cost,
+                    'media_credits' => (int) $user->chat_media_credits,
+                ], 402);
             }
 
             $file = $request->file('media');
@@ -839,13 +850,20 @@ class ChatController extends Controller
         }
 
         if (! $user->isAdmin() && $type === 'audio') {
-            if ((int) $user->chat_audio_credits < 1) {
+            $cost = $this->creditService->chatSendCost('audio');
+            $hasUnit = (int) $user->chat_audio_credits >= 1;
+            $hasWallet = round((float) $user->creditos, 2) >= $cost && $cost > 0;
+
+            if (! $hasUnit && ! $hasWallet) {
                 return response()->json([
-                    'message' => 'Você não tem créditos de áudio. Libere um pacote para enviar áudios.',
+                    'message' => 'Saldo insuficiente para enviar áudio. Recarregue seus créditos.',
+                    'requires_credits' => true,
                     'requires_media_pack' => true,
                     'package_needed' => 'audio',
-                    'audio_credits' => 0,
-                ], 403);
+                    'creditos' => round((float) $user->creditos, 2),
+                    'valor_necessario' => $cost,
+                    'audio_credits' => (int) $user->chat_audio_credits,
+                ], 402);
             }
 
             $file = $request->file('media');
@@ -879,44 +897,88 @@ class ChatController extends Controller
             $mediaUrl = rtrim((string) env('AWS_URL'), '/').'/'.$mediaPath;
         }
 
-        $message = DB::transaction(function () use ($request, $user, $conversation, $type, $mediaPath, $mediaUrl) {
-            if (! $user->isAdmin() && in_array($type, ['image', 'video'], true)) {
-                $locked = User::query()->where('id', $user->id)->lockForUpdate()->first();
-                if ((int) $locked->chat_media_credits < 1) {
-                    throw ValidationException::withMessages([
-                        'media' => 'Créditos de mídia insuficientes.',
-                    ]);
+        try {
+            $message = DB::transaction(function () use ($request, $user, $conversation, $type, $mediaPath, $mediaUrl) {
+                if (! $user->isAdmin() && in_array($type, ['image', 'video'], true)) {
+                    $locked = User::query()->where('id', $user->id)->lockForUpdate()->first();
+                    if ((int) $locked->chat_media_credits >= 1) {
+                        $locked->decrement('chat_media_credits');
+                        $user->chat_media_credits = $locked->chat_media_credits;
+                    } else {
+                        $cost = $this->creditService->chatSendCost('media');
+                        if ($cost <= 0) {
+                            throw ValidationException::withMessages([
+                                'media' => 'Custo de envio de mídia não configurado.',
+                            ]);
+                        }
+                        $saldo = round((float) $locked->creditos, 2);
+                        if ($saldo < $cost) {
+                            throw new InsufficientCreditsException($saldo, $cost, 'Saldo insuficiente para enviar foto/vídeo.');
+                        }
+                        $locked->creditos = round($saldo - $cost, 2);
+                        $locked->save();
+                        $user->creditos = $locked->creditos;
+
+                        \App\Models\CreditTransaction::create([
+                            'user_id' => $locked->id,
+                            'tipo' => 'gasto',
+                            'valor' => -$cost,
+                            'saldo_apos' => $locked->creditos,
+                            'referencia_tipo' => 'chat_midia',
+                            'descricao' => 'Envio de '.($type === 'video' ? 'vídeo' : 'foto').' no chat',
+                        ]);
+                    }
                 }
-                $locked->decrement('chat_media_credits');
-                $user->chat_media_credits = $locked->chat_media_credits;
-            }
 
-            if (! $user->isAdmin() && $type === 'audio') {
-                $locked = User::query()->where('id', $user->id)->lockForUpdate()->first();
-                if ((int) $locked->chat_audio_credits < 1) {
-                    throw ValidationException::withMessages([
-                        'media' => 'Créditos de áudio insuficientes.',
-                    ]);
+                if (! $user->isAdmin() && $type === 'audio') {
+                    $locked = User::query()->where('id', $user->id)->lockForUpdate()->first();
+                    if ((int) $locked->chat_audio_credits >= 1) {
+                        $locked->decrement('chat_audio_credits');
+                        $user->chat_audio_credits = $locked->chat_audio_credits;
+                    } else {
+                        $cost = $this->creditService->chatSendCost('audio');
+                        if ($cost <= 0) {
+                            throw ValidationException::withMessages([
+                                'media' => 'Custo de envio de áudio não configurado.',
+                            ]);
+                        }
+                        $saldo = round((float) $locked->creditos, 2);
+                        if ($saldo < $cost) {
+                            throw new InsufficientCreditsException($saldo, $cost, 'Saldo insuficiente para enviar áudio.');
+                        }
+                        $locked->creditos = round($saldo - $cost, 2);
+                        $locked->save();
+                        $user->creditos = $locked->creditos;
+
+                        \App\Models\CreditTransaction::create([
+                            'user_id' => $locked->id,
+                            'tipo' => 'gasto',
+                            'valor' => -$cost,
+                            'saldo_apos' => $locked->creditos,
+                            'referencia_tipo' => 'chat_audio',
+                            'descricao' => 'Envio de áudio no chat',
+                        ]);
+                    }
                 }
-                $locked->decrement('chat_audio_credits');
-                $user->chat_audio_credits = $locked->chat_audio_credits;
-            }
 
-            $message = Message::create([
-                'conversation_id' => $conversation->id,
-                'user_id' => $user->id,
-                'type' => $type,
-                'body' => $request->input('body'),
-                'media_path' => $mediaPath,
-                'media_url' => $mediaUrl,
-                'reply_to_id' => $request->input('reply_to_id'),
-                'delivered_at' => now(),
-            ]);
+                $message = Message::create([
+                    'conversation_id' => $conversation->id,
+                    'user_id' => $user->id,
+                    'type' => $type,
+                    'body' => $request->input('body'),
+                    'media_path' => $mediaPath,
+                    'media_url' => $mediaUrl,
+                    'reply_to_id' => $request->input('reply_to_id'),
+                    'delivered_at' => now(),
+                ]);
 
-            $conversation->update(['last_message_at' => now()]);
+                $conversation->update(['last_message_at' => now()]);
 
-            return $message;
-        });
+                return $message;
+            });
+        } catch (InsufficientCreditsException $e) {
+            return $e->render();
+        }
 
         $message->load(['user', 'replyTo.user', 'likes']);
 
@@ -957,6 +1019,7 @@ class ChatController extends Controller
         return (new MessageResource($message))->additional([
             'media_credits' => (int) $fresh->chat_media_credits,
             'audio_credits' => (int) $fresh->chat_audio_credits,
+            'creditos' => round((float) $fresh->creditos, 2),
         ]);
     }
 
@@ -1179,6 +1242,9 @@ class ChatController extends Controller
         return response()->json([
             'media_credits' => (int) $user->chat_media_credits,
             'audio_credits' => (int) $user->chat_audio_credits,
+            'creditos' => round((float) $user->creditos, 2),
+            'chat_media_cost' => $this->creditService->chatSendCost('media'),
+            'chat_audio_cost' => $this->creditService->chatSendCost('audio'),
             'credits_per_pack' => (int) config('chat.media_credits_per_pack', 5),
             'audio_credits_per_pack' => (int) config('chat.audio_credits_per_pack', 5),
             'audio_max_seconds' => (int) config('chat.audio_max_seconds', 60),
