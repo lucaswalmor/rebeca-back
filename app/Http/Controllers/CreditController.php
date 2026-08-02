@@ -10,8 +10,24 @@ use Illuminate\Support\Facades\Log;
 
 class CreditController extends Controller
 {
-    /** @var list<int|float> */
-    public const CHIPS = [20, 50, 100, 200, 500, 1000];
+    /**
+     * Chips de recarga (créditos = valor em R$, exceto chip de teste).
+     * TEMP: chip 1 credita 1 crédito e cobra R$ 2,00 só para testes.
+     *
+     * @var list<int|float>
+     */
+    public const CHIPS = [1, 20, 50, 100, 200, 500, 1000];
+
+    /** Preço em R$ cobrado no InfinitePay por chip (padrão 1:1). */
+    private function payAmount(float $chip): float
+    {
+        // TEMP teste: 1 crédito por R$ 2,00
+        if (abs($chip - 1.0) < 0.001) {
+            return 2.0;
+        }
+
+        return round($chip, 2);
+    }
 
     public function __construct(private CreditService $credits) {}
 
@@ -22,6 +38,9 @@ class CreditController extends Controller
         return response()->json([
             'creditos' => $this->credits->balance($user),
             'chips' => self::CHIPS,
+            'chip_prices' => collect(self::CHIPS)
+                ->mapWithKeys(fn ($chip) => [(string) $chip => $this->payAmount((float) $chip)])
+                ->all(),
             'chat_media_cost' => $this->credits->chatSendCost('media'),
             'chat_audio_cost' => $this->credits->chatSendCost('audio'),
             'chat_media_credits' => (int) $user->chat_media_credits,
@@ -41,23 +60,26 @@ class CreditController extends Controller
             'valor' => 'required|numeric|min:1|max:10000',
         ]);
 
-        $valor = round((float) $data['valor'], 2);
-        $isChip = collect(self::CHIPS)->contains(fn ($chip) => abs((float) $chip - $valor) < 0.001);
+        $chip = round((float) $data['valor'], 2);
+        $isChip = collect(self::CHIPS)->contains(fn ($c) => abs((float) $c - $chip) < 0.001);
 
-        if (! $isChip && $valor < 20) {
+        if (! $isChip && $chip < 20) {
             return response()->json([
                 'message' => 'O valor mínimo de recarga é R$ 20,00.',
             ], 422);
         }
+
+        $payAmount = $this->payAmount($chip);
 
         CreditPurchase::query()
             ->where('user_id', $user->id)
             ->where('status', 'pendente')
             ->update(['status' => 'cancelado']);
 
+        // `valor` = créditos a creditar (chip). Cobrança InfinitePay usa $payAmount.
         $purchase = CreditPurchase::create([
             'user_id' => $user->id,
-            'valor' => $valor,
+            'valor' => $chip,
             'status' => 'pendente',
         ]);
 
@@ -72,8 +94,8 @@ class CreditController extends Controller
             'items' => [
                 [
                     'quantity' => 1,
-                    'price' => (int) round($valor * 100),
-                    'description' => 'Recarga de créditos - R$ '.number_format($valor, 2, ',', '.'),
+                    'price' => (int) round($payAmount * 100),
+                    'description' => 'Recarga de créditos - R$ '.number_format($payAmount, 2, ',', '.'),
                 ],
             ],
         ];
@@ -82,6 +104,8 @@ class CreditController extends Controller
             'payload' => $payload,
             'user_id' => $user->id,
             'purchase_id' => $purchase->id,
+            'chip' => $chip,
+            'pay_amount' => $payAmount,
         ]);
 
         $response = Http::post('https://api.infinitepay.io/invoices/public/checkout/links', $payload);
@@ -119,7 +143,8 @@ class CreditController extends Controller
             'link' => $link,
             'purchase_id' => $purchase->id,
             'order_nsu' => $orderNsu,
-            'valor' => $valor,
+            'valor' => $chip,
+            'pay_amount' => $payAmount,
         ]);
     }
 
