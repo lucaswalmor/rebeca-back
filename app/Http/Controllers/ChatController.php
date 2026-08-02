@@ -180,6 +180,8 @@ class ChatController extends Controller
             'audio_duration' => 'nullable|integer|min:1|max:60',
             'media_files' => 'nullable|array|max:10',
             'media_files.*' => 'file|mimes:jpeg,jpg,png,gif,webp,mp4,webm,mov|max:102400',
+            'is_locked' => 'nullable|boolean',
+            'price' => 'nullable|numeric|min:2|max:100',
         ]);
 
         $titulo = trim((string) ($data['titulo'] ?? ''));
@@ -191,6 +193,24 @@ class ChatController extends Controller
 
         if (! is_array($mediaFiles)) {
             $mediaFiles = [$mediaFiles];
+        }
+
+        $isLocked = $request->boolean('is_locked');
+        $price = null;
+        if ($isLocked) {
+            if (count($mediaFiles) === 0 && ! $hasAudio) {
+                return response()->json([
+                    'message' => 'Para cobrar, anexe foto, vídeo ou áudio.',
+                    'errors' => ['is_locked' => ['Anexe mídia ou áudio para cobrar.']],
+                ], 422);
+            }
+            $price = round((float) $request->input('price', 0), 2);
+            if ($price < 2 || $price > 100) {
+                return response()->json([
+                    'message' => 'Selecione um valor entre 2 e 100 créditos.',
+                    'errors' => ['price' => ['Selecione um valor entre 2 e 100 créditos.']],
+                ], 422);
+            }
         }
 
         if ($titulo === '' && $body === '' && ! $hasAudio && count($mediaFiles) === 0) {
@@ -313,6 +333,8 @@ class ChatController extends Controller
                         'body' => null,
                         'media_path' => $mediaPath,
                         'media_url' => $mediaUrl,
+                        'is_locked' => $isLocked,
+                        'price' => $isLocked ? $price : null,
                         'delivered_at' => now(),
                     ]);
                     $conversation->update(['last_message_at' => now()]);
@@ -340,6 +362,8 @@ class ChatController extends Controller
                         'body' => (string) $audioDuration,
                         'media_path' => $mediaPath,
                         'media_url' => $mediaUrl,
+                        'is_locked' => $isLocked,
+                        'price' => $isLocked ? $price : null,
                         'delivered_at' => now(),
                     ]);
                     $conversation->update(['last_message_at' => now()]);
@@ -807,9 +831,9 @@ class ChatController extends Controller
         $price = null;
 
         if ($isLocked) {
-            if (! in_array($type, ['image', 'video'], true)) {
+            if (! in_array($type, ['image', 'video', 'audio'], true)) {
                 throw ValidationException::withMessages([
-                    'is_locked' => 'Conteúdo pago só pode ser foto ou vídeo.',
+                    'is_locked' => 'Conteúdo pago só pode ser foto, vídeo ou áudio.',
                 ]);
             }
             $price = round((float) $request->input('price', 0), 2);
