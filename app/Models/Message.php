@@ -18,6 +18,8 @@ class Message extends Model
         'body',
         'media_path',
         'media_url',
+        'is_locked',
+        'price',
         'reply_to_id',
         'edited_at',
         'delivered_at',
@@ -27,6 +29,8 @@ class Message extends Model
     protected function casts(): array
     {
         return [
+            'is_locked' => 'boolean',
+            'price' => 'decimal:2',
             'edited_at' => 'datetime',
             'delivered_at' => 'datetime',
             'read_at' => 'datetime',
@@ -53,8 +57,39 @@ class Message extends Model
         return $this->hasMany(MessageLike::class);
     }
 
+    public function purchases(): HasMany
+    {
+        return $this->hasMany(MessagePurchase::class);
+    }
+
     public function isMedia(): bool
     {
         return in_array($this->type, ['image', 'video'], true);
+    }
+
+    public function isPaidContent(): bool
+    {
+        return (bool) $this->is_locked && round((float) $this->price, 2) > 0;
+    }
+
+    public function userHasAccess(?User $user): bool
+    {
+        if (! $this->isPaidContent()) {
+            return true;
+        }
+
+        if (! $user) {
+            return false;
+        }
+
+        if ($user->isAdmin() || (int) $user->id === (int) $this->user_id) {
+            return true;
+        }
+
+        if ($this->relationLoaded('purchases')) {
+            return $this->purchases->contains('user_id', $user->id);
+        }
+
+        return $this->purchases()->where('user_id', $user->id)->exists();
     }
 }

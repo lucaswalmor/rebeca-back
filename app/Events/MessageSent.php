@@ -43,8 +43,20 @@ class MessageSent implements ShouldBroadcastNow
 
     public function broadcastWith(): array
     {
+        $payload = (new MessageResource($this->message))->resolve();
+
+        // Resolve usa o user da request (remetente). Não expor URL de mídia paga no fio —
+        // cada cliente confirma acesso via API (lista/unlock).
+        if ($this->message->isPaidContent()) {
+            $payload['media_url'] = null;
+            $payload['paid'] = false;
+            $payload['has_access'] = false;
+            $payload['is_locked'] = true;
+            $payload['price'] = round((float) $this->message->price, 2);
+        }
+
         return [
-            'message' => (new MessageResource($this->message))->resolve(),
+            'message' => $payload,
         ];
     }
 }

@@ -10,6 +10,8 @@ class MessageResource extends JsonResource
     public function toArray(Request $request): array
     {
         $user = $request->user();
+        $isPaid = $this->isPaidContent();
+        $hasAccess = $this->userHasAccess($user);
 
         return [
             'id' => $this->id,
@@ -17,7 +19,11 @@ class MessageResource extends JsonResource
             'user_id' => $this->user_id,
             'type' => $this->type,
             'body' => $this->body,
-            'media_url' => $this->media_url,
+            'media_url' => ($isPaid && ! $hasAccess) ? null : $this->media_url,
+            'is_locked' => $isPaid,
+            'price' => $isPaid ? round((float) $this->price, 2) : null,
+            'paid' => $isPaid ? $hasAccess : true,
+            'has_access' => $hasAccess,
             'reply_to_id' => $this->reply_to_id,
             'reply_to' => $this->whenLoaded('replyTo', function () {
                 if (! $this->replyTo) {

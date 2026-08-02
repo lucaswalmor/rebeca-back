@@ -14,6 +14,7 @@ use App\Mail\ChatMessageReceivedMail;
 use App\Models\Conversation;
 use App\Models\Message;
 use App\Models\MessageLike;
+use App\Models\MessagePurchase;
 use App\Models\User;
 use App\Services\ChatLogger;
 use App\Services\CreditService;
@@ -490,7 +491,7 @@ class ChatController extends Controller
         }
 
         $messages = $conversation->messages()
-            ->with(['user', 'replyTo.user', 'likes'])
+            ->with(['user', 'replyTo.user', 'likes', 'purchases'])
             ->when(
                 $conversation->clearedAtFor($user),
                 fn ($q) => $q->where('created_at', '>', $conversation->clearedAtFor($user))
@@ -515,7 +516,7 @@ class ChatController extends Controller
         }
 
         $media = $conversation->messages()
-            ->with(['user', 'likes'])
+            ->with(['user', 'likes', 'purchases'])
             ->whereIn('type', ['image', 'video'])
             ->when(
                 $conversation->clearedAtFor($user),
@@ -796,10 +797,28 @@ class ChatController extends Controller
             'body' => 'nullable|string|max:5000',
             'reply_to_id' => 'nullable|integer|exists:messages,id',
             'media' => 'nullable|file|mimes:jpeg,jpg,png,gif,webp,mp4,webm,mov,mp3,ogg,m4a,mpeg,wav,aac,mpga',
+            'is_locked' => 'nullable|boolean',
+            'price' => 'nullable|numeric|min:2|max:100',
         ]);
 
         $type = $request->input('type');
         $maxAudioSeconds = (int) config('chat.audio_max_seconds', 60);
+        $isLocked = $user->isAdmin() && $request->boolean('is_locked');
+        $price = null;
+
+        if ($isLocked) {
+            if (! in_array($type, ['image', 'video'], true)) {
+                throw ValidationException::withMessages([
+                    'is_locked' => 'Conteúdo pago só pode ser foto ou vídeo.',
+                ]);
+            }
+            $price = round((float) $request->input('price', 0), 2);
+            if ($price < 2 || $price > 100) {
+                throw ValidationException::withMessages([
+                    'price' => 'Selecione um valor entre 2 e 100 créditos.',
+                ]);
+            }
+        }
 
         if ($type === 'text' && blank($request->input('body'))) {
             throw ValidationException::withMessages(['body' => 'A mensagem de texto é obrigatória.']);
@@ -898,7 +917,7 @@ class ChatController extends Controller
         }
 
         try {
-            $message = DB::transaction(function () use ($request, $user, $conversation, $type, $mediaPath, $mediaUrl) {
+            $message = DB::transaction(function () use ($request, $user, $conversation, $type, $mediaPath, $mediaUrl, $isLocked, $price) {
                 if (! $user->isAdmin() && in_array($type, ['image', 'video'], true)) {
                     $locked = User::query()->where('id', $user->id)->lockForUpdate()->first();
                     if ((int) $locked->chat_media_credits >= 1) {
@@ -968,6 +987,8 @@ class ChatController extends Controller
                     'body' => $request->input('body'),
                     'media_path' => $mediaPath,
                     'media_url' => $mediaUrl,
+                    'is_locked' => $isLocked,
+                    'price' => $isLocked ? $price : null,
                     'reply_to_id' => $request->input('reply_to_id'),
                     'delivered_at' => now(),
                 ]);
@@ -980,7 +1001,7 @@ class ChatController extends Controller
             return $e->render();
         }
 
-        $message->load(['user', 'replyTo.user', 'likes']);
+        $message->load(['user', 'replyTo.user', 'likes', 'purchases']);
 
         broadcast(new MessageSent($message))->toOthers();
         broadcast(new ConversationUpdated(
@@ -1020,6 +1041,103 @@ class ChatController extends Controller
             'media_credits' => (int) $fresh->chat_media_credits,
             'audio_credits' => (int) $fresh->chat_audio_credits,
             'creditos' => round((float) $fresh->creditos, 2),
+        ]);
+    }
+
+    /**
+     * Cliente desbloqueia conteúdo pago do chat com créditos.
+     */
+    public function unlockMessage(Request $request, int $messageId)
+    {
+        $user = $request->user();
+        $message = Message::query()->with(['conversation', 'purchases'])->findOrFail($messageId);
+
+        if (! $message->conversation->isParticipant($user)) {
+            return response()->json(['message' => 'Não autorizado.'], 403);
+        }
+
+        if (! $user->isAdmin() && ! $user->hasAssinaturaAprovadaAtiva()) {
+            return response()->json([
+                'message' => 'Sua assinatura não está ativa.',
+                'requires_subscription' => true,
+            ], 403);
+        }
+
+        if (! $message->isPaidContent()) {
+            $message->load(['user', 'replyTo.user', 'likes', 'purchases']);
+
+            return response()->json([
+                'success' => true,
+                'already_owned' => true,
+                'message' => 'Este conteúdo não é pago.',
+                'data' => new MessageResource($message),
+                'creditos' => $this->creditService->balance($user),
+            ]);
+        }
+
+        if ($message->userHasAccess($user)) {
+            $message->load(['user', 'replyTo.user', 'likes', 'purchases']);
+
+            return response()->json([
+                'success' => true,
+                'already_owned' => true,
+                'message' => 'Você já possui acesso a este conteúdo.',
+                'data' => new MessageResource($message),
+                'creditos' => $this->creditService->balance($user),
+            ]);
+        }
+
+        $valor = round((float) $message->price, 2);
+
+        try {
+            DB::transaction(function () use ($user, $message, $valor) {
+                $existing = MessagePurchase::query()
+                    ->where('message_id', $message->id)
+                    ->where('user_id', $user->id)
+                    ->lockForUpdate()
+                    ->first();
+
+                if ($existing) {
+                    return;
+                }
+
+                $purchase = MessagePurchase::create([
+                    'message_id' => $message->id,
+                    'user_id' => $user->id,
+                    'valor' => $valor,
+                ]);
+
+                $this->creditService->debit(
+                    $user,
+                    $valor,
+                    'chat_conteudo_pago',
+                    $purchase->id,
+                    'Desbloqueio de conteúdo pago no chat #'.$message->id,
+                );
+            });
+        } catch (InsufficientCreditsException $e) {
+            return $e->render();
+        } catch (\Throwable $e) {
+            Log::error('[CREDITOS] Erro ao desbloquear mensagem paga', [
+                'message_id' => $message->id,
+                'user_id' => $user->id,
+                'erro' => $e->getMessage(),
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Erro ao desbloquear conteúdo.',
+            ], 500);
+        }
+
+        $message->load(['user', 'replyTo.user', 'likes', 'purchases']);
+
+        return response()->json([
+            'success' => true,
+            'unlocked' => true,
+            'message' => 'Conteúdo desbloqueado com créditos.',
+            'data' => new MessageResource($message),
+            'creditos' => $this->creditService->balance($user),
         ]);
     }
 

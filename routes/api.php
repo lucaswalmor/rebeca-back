@@ -177,6 +177,7 @@ Route::middleware('auth:sanctum')
         Route::put('/messages/{messageId}', 'update');
         Route::delete('/messages/{messageId}', 'destroy');
         Route::post('/messages/{messageId}/like', 'toggleLike');
+        Route::post('/messages/{messageId}/unlock', 'unlockMessage');
     });
 
 Route::middleware('auth:sanctum')
