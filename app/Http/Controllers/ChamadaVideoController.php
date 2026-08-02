@@ -38,7 +38,16 @@ class ChamadaVideoController extends Controller
             'duracao_minutos' => 'required|integer|min:1|max:480',
             'meet_link' => 'nullable|url|max:500',
         ], [
+            'data.required' => 'A data é obrigatória.',
+            'horario.required' => 'O horário é obrigatório.',
+            'horario.regex' => 'O horário deve estar no formato HH:MM.',
+            'valor.required' => 'O valor é obrigatório.',
             'valor.min' => 'O valor mínimo da chamada é R$ 1,01 (limite da InfinitePay).',
+            'duracao_minutos.required' => 'A duração é obrigatória.',
+            'duracao_minutos.integer' => 'A duração deve ser um número inteiro (em minutos).',
+            'duracao_minutos.min' => 'A duração mínima é 1 minuto.',
+            'duracao_minutos.max' => 'A duração máxima é 480 minutos.',
+            'meet_link.url' => 'Informe um link válido para a call.',
         ]);
 
         $titulo = trim((string) ($data['titulo'] ?? '')) ?: 'Chamada de vídeo com a beca';
