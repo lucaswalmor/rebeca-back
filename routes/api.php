@@ -1,19 +1,21 @@
 <?php
 
+use App\Http\Controllers\AdminAssinantesController;
+use App\Http\Controllers\AdminLiveController;
 use App\Http\Controllers\AssinaturaController;
 use App\Http\Controllers\AuthController;
-use App\Http\Controllers\AdminAssinantesController;
+use App\Http\Controllers\ChamadaVideoController;
 use App\Http\Controllers\ChatController;
 use App\Http\Controllers\ChatMediaPurchaseController;
-use App\Http\Controllers\ChamadaVideoController;
-use App\Http\Controllers\CreditController;
-use App\Http\Controllers\PresentinhoController;
-use App\Http\Controllers\ConteudoExclusivoController;
 use App\Http\Controllers\CommentController;
 use App\Http\Controllers\CommentReplyController;
+use App\Http\Controllers\ConteudoExclusivoController;
+use App\Http\Controllers\CreditController;
+use App\Http\Controllers\LiveController;
 use App\Http\Controllers\PostCompraController;
 use App\Http\Controllers\PostController;
 use App\Http\Controllers\PostLikeController;
+use App\Http\Controllers\PresentinhoController;
 use App\Http\Controllers\PurchasedGalleryController;
 use App\Http\Controllers\UserController;
 use Illuminate\Http\Request;
@@ -152,6 +154,29 @@ Route::middleware('auth:sanctum')
         Route::post('/assinantes/{id}/desbloquear-chat', 'desbloquearChat');
         Route::post('/assinantes/{id}/creditar', 'creditar');
         Route::delete('/assinantes/{id}', 'destroy');
+    });
+
+Route::middleware('auth:sanctum')
+    ->prefix('admin')
+    ->controller(AdminLiveController::class)
+    ->group(function () {
+        Route::get('/lives/current', 'current');
+        Route::post('/lives', 'store');
+        Route::post('/lives/{id}/notify', 'notify');
+        Route::post('/lives/{id}/start', 'start');
+        Route::post('/lives/{id}/end', 'end');
+        Route::post('/lives/{id}/toggle-chat', 'toggleChat');
+        Route::get('/lives/{id}/participants', 'participants');
+        Route::post('/lives/{id}/participants/{userId}/mute-chat', 'muteChatUser');
+        Route::post('/lives/{id}/participants/{userId}/kick', 'kick');
+    });
+
+Route::middleware('auth:sanctum')
+    ->controller(LiveController::class)
+    ->group(function () {
+        Route::get('/lives/{uuid}', 'show');
+        Route::post('/lives/{uuid}/join', 'join');
+        Route::post('/lives/{uuid}/token', 'token');
     });
 
 // Broadcasting auth (Sanctum Bearer)
