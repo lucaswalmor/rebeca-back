@@ -150,6 +150,7 @@ Route::middleware('auth:sanctum')
         Route::post('/assinantes/{id}/desbloquear', 'desbloquear');
         Route::post('/assinantes/{id}/bloquear-chat', 'bloquearChat');
         Route::post('/assinantes/{id}/desbloquear-chat', 'desbloquearChat');
+        Route::post('/assinantes/{id}/creditar', 'creditar');
         Route::delete('/assinantes/{id}', 'destroy');
     });
 

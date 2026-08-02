@@ -171,6 +171,43 @@ class AdminAssinantesController extends Controller
         ]);
     }
 
+    /**
+     * Credita saldo inteiro na carteira do assinante (ajuste manual do admin).
+     */
+    public function creditar(Request $request, int $id)
+    {
+        $admin = $request->user();
+        if (! $admin?->isAdmin()) {
+            return response()->json(['message' => 'Não autorizado.'], 403);
+        }
+
+        $validated = $request->validate([
+            'quantidade' => 'required|integer|min:1|max:100000',
+        ]);
+
+        $quantidade = (int) $validated['quantidade'];
+        $user = User::query()->where('is_admin', false)->findOrFail($id);
+
+        $tx = app(\App\Services\CreditService::class)->credit(
+            $user,
+            (float) $quantidade,
+            'admin_ajuste',
+            $admin->id,
+            "Crédito manual pelo admin #{$admin->id} ({$admin->email})",
+            null,
+            'ajuste',
+        );
+
+        $fresh = $user->fresh(['assinaturas']);
+
+        return response()->json([
+            'message' => "{$quantidade} crédito(s) adicionados com sucesso.",
+            'data' => $this->mapSubscriber($fresh),
+            'creditos' => round((float) $fresh->creditos, 2),
+            'transaction_id' => $tx->id,
+        ]);
+    }
+
     public function destroy(Request $request, int $id)
     {
         $admin = $request->user();
@@ -264,6 +301,7 @@ class AdminAssinantesController extends Controller
             'plano' => $ativa?->tipo_assinatura ?? $ultima?->tipo_assinatura,
             'vencimento' => $vencimento?->format('Y-m-d'),
             'vencimento_formatado' => $vencimento?->format('d/m/Y'),
+            'creditos' => (int) round((float) $user->creditos),
         ];
     }
 }

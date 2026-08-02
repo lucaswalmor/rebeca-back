@@ -24,19 +24,20 @@ class CreditService
         ?int $referenciaId = null,
         ?string $descricao = null,
         ?string $orderNsu = null,
+        string $tipo = 'recarga',
     ): CreditTransaction {
         if ($amount <= 0) {
             throw new \InvalidArgumentException('Valor de crédito deve ser positivo.');
         }
 
-        return DB::transaction(function () use ($user, $amount, $referenciaTipo, $referenciaId, $descricao, $orderNsu) {
+        return DB::transaction(function () use ($user, $amount, $referenciaTipo, $referenciaId, $descricao, $orderNsu, $tipo) {
             $locked = User::query()->where('id', $user->id)->lockForUpdate()->firstOrFail();
             $locked->creditos = round((float) $locked->creditos + $amount, 2);
             $locked->save();
 
             return CreditTransaction::create([
                 'user_id' => $locked->id,
-                'tipo' => 'recarga',
+                'tipo' => $tipo,
                 'valor' => $amount,
                 'saldo_apos' => $locked->creditos,
                 'referencia_tipo' => $referenciaTipo,
