@@ -21,7 +21,7 @@ class CommentController extends Controller
 
         $comments = $comments->map(function ($comment) {
             $commentData = $comment->toArray();
-            $commentData['avatar'] = $comment->user->path_img_avatar ?? 'https://primefaces.org/cdn/primevue/images/avatar/amyelsner.png';
+            $commentData['avatar'] = $comment->user->path_img_avatar;
             $commentData['name'] = $comment->user->apelido ?: 'usuario-'.$comment->user_id;
             $commentData['timeAgo'] = $comment->time_ago;
             $commentData['user_id'] = $comment->user_id;

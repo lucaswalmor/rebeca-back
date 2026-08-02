@@ -451,7 +451,7 @@ class PostController extends Controller
 
         $postData['comments'] = $post->comments->map(function ($comment) {
             $commentData = $comment->toArray();
-            $commentData['avatar'] = $comment->user->path_img_avatar ?? 'https://primefaces.org/cdn/primevue/images/avatar/amyelsner.png';
+            $commentData['avatar'] = $comment->user->path_img_avatar;
             $commentData['name'] = $comment->user->apelido ?? ($comment->user->nome.' '.$comment->user->sobrenome);
             $commentData['timeAgo'] = $comment->time_ago;
             $commentData['user_id'] = $comment->user_id;
