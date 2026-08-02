@@ -69,8 +69,12 @@ class PostController extends Controller
 
         $page = (int) $request->query('page', 1);
         $perPage = (int) $request->query('per_page', 20);
+        $withTrashed = $request->boolean('with_trashed');
 
-        $query = Post::with(['user', 'media', 'likes', 'comments.reply.user']);
+        $query = Post::query()->with(['user', 'media', 'likes', 'comments.reply.user']);
+        if ($withTrashed) {
+            $query->withTrashed();
+        }
 
         $total = $query->count();
         $posts = $query->orderBy('is_fixed', 'desc')
@@ -165,14 +169,45 @@ class PostController extends Controller
             ], 403);
         }
 
-        foreach ($post->media as $media) {
-            $this->deleteMediaFromStorage($media->path);
-        }
-
+        // Soft delete: mantém mídias no S3 e compras do cliente
         $post->delete();
 
         return response()->json([
-            'message' => 'Post deletado com sucesso.',
+            'message' => 'Post excluído com sucesso.',
+        ]);
+    }
+
+    /**
+     * Restaura post soft-deletado e sobe para o topo do feed (bump created_at).
+     */
+    public function repost(string $id, Request $request)
+    {
+        $user = $request->user();
+
+        if (! $user || ! $user->isAdmin()) {
+            return response()->json([
+                'message' => 'Acesso negado. Apenas administradores podem repostar.',
+            ], 403);
+        }
+
+        $post = Post::withTrashed()->findOrFail($id);
+
+        if ($post->trashed()) {
+            $post->restore();
+        }
+
+        $now = now();
+        $post->forceFill([
+            'created_at' => $now,
+            'updated_at' => $now,
+            'status' => 'ativo',
+        ])->save();
+
+        $post->load(['user', 'media', 'likes', 'comments.reply.user']);
+
+        return response()->json([
+            'message' => 'Post repostado com sucesso.',
+            'data' => $this->formatPostData($post, $user, true),
         ]);
     }
 
@@ -442,6 +477,8 @@ class PostController extends Controller
         $postData['date'] = $post->created_at->format('d/m/Y');
         $postData['status'] = $post->status;
         $postData['is_fixed'] = $post->is_fixed;
+        $postData['deleted_at'] = $post->deleted_at?->toISOString();
+        $postData['is_deleted'] = $post->trashed();
 
         if ($post->user) {
             $postData['user_avatar'] = $post->user->path_img_avatar ?? 'https://primefaces.org/cdn/primevue/images/avatar/amyelsner.png';

@@ -14,6 +14,7 @@ use App\Http\Controllers\CommentReplyController;
 use App\Http\Controllers\PostCompraController;
 use App\Http\Controllers\PostController;
 use App\Http\Controllers\PostLikeController;
+use App\Http\Controllers\PurchasedGalleryController;
 use App\Http\Controllers\UserController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Broadcast;
@@ -67,6 +68,7 @@ Route::middleware('auth:sanctum')
         Route::put('/posts/{id}', 'update');
         Route::patch('/posts/{id}', 'update');
         Route::delete('/posts/{id}', 'destroy');
+        Route::post('/posts/{id}/repost', 'repost');
         Route::post('/posts/{id}/media', 'uploadMedia');
         Route::post('/posts/{id}/toggle-fixed', 'toggleFixed');
         Route::post('/posts/{id}/toggle-status', 'toggleStatus');
@@ -78,6 +80,11 @@ Route::middleware('auth:sanctum')
     ->group(function () {
         Route::post('/posts/{id}/comprar', 'comprar');
     });
+
+// Galeria de conteúdos comprados (posts + chat)
+Route::middleware('auth:sanctum')->group(function () {
+    Route::get('/me/purchased-gallery', [PurchasedGalleryController::class, 'index']);
+});
 
 // Carteira de créditos
 Route::middleware('auth:sanctum')
