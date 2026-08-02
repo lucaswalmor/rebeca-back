@@ -67,16 +67,36 @@ class PostController extends Controller
             ], 403);
         }
 
-        $page = (int) $request->query('page', 1);
-        $perPage = (int) $request->query('per_page', 20);
+        $page = max(1, (int) $request->query('page', 1));
+        $perPage = max(1, min(100, (int) $request->query('per_page', 20)));
         $withTrashed = $request->boolean('with_trashed');
+        $visibility = $request->query('visibility', 'all'); // all|active|inactive
+        $dateFrom = $request->query('date_from');
+        $dateTo = $request->query('date_to');
 
         $query = Post::query()->with(['user', 'media', 'likes', 'comments.reply.user']);
-        if ($withTrashed) {
+
+        if ($visibility === 'inactive') {
+            $query->onlyTrashed();
+        } elseif ($visibility === 'active') {
+            $query->whereNull('deleted_at');
+        } elseif ($withTrashed || $visibility === 'all') {
             $query->withTrashed();
         }
 
-        $total = $query->count();
+        if ($dateFrom) {
+            $query->whereDate('created_at', '>=', $dateFrom);
+        }
+        if ($dateTo) {
+            $query->whereDate('created_at', '<=', $dateTo);
+        }
+
+        $total = (clone $query)->count();
+        $lastPage = max(1, (int) ceil($total / $perPage));
+        if ($page > $lastPage) {
+            $page = $lastPage;
+        }
+
         $posts = $query->orderBy('is_fixed', 'desc')
             ->orderBy('created_at', 'desc')
             ->skip(($page - 1) * $perPage)
@@ -93,8 +113,8 @@ class PostController extends Controller
                 'current_page' => $page,
                 'per_page' => $perPage,
                 'total' => $total,
-                'last_page' => ceil($total / $perPage),
-                'has_more' => ($page * $perPage) < $total,
+                'last_page' => $lastPage,
+                'has_more' => $page < $lastPage,
             ],
         ]);
     }
@@ -173,7 +193,7 @@ class PostController extends Controller
         $post->delete();
 
         return response()->json([
-            'message' => 'Post excluído com sucesso.',
+            'message' => 'Post inativado com sucesso.',
         ]);
     }
 
