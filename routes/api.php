@@ -167,8 +167,8 @@ Route::middleware('auth:sanctum')
         Route::post('/lives/{id}/end', 'end');
         Route::post('/lives/{id}/toggle-chat', 'toggleChat');
         Route::post('/lives/{id}/goals', 'storeGoal');
-        Route::patch('/lives/{id}/goals/{goalId}', 'updateGoal');
-        Route::delete('/lives/{id}/goals/{goalId}', 'destroyGoal');
+        Route::post('/lives/{id}/goals/{goalId}', 'updateGoal');
+        Route::post('/lives/{id}/goals/{goalId}/delete', 'destroyGoal');
         Route::get('/lives/{id}/participants', 'participants');
         Route::post('/lives/{id}/participants/{userId}/mute-chat', 'muteChatUser');
         Route::post('/lives/{id}/participants/{userId}/kick', 'kick');
