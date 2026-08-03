@@ -79,6 +79,16 @@ class Live extends Model
         return $this->hasMany(LiveTicket::class);
     }
 
+    public function goals(): HasMany
+    {
+        return $this->hasMany(LiveGoal::class)->orderBy('sort_order')->orderBy('id');
+    }
+
+    public function donations(): HasMany
+    {
+        return $this->hasMany(LiveDonation::class);
+    }
+
     public function isAgendada(): bool
     {
         return $this->status === self::STATUS_AGENDADA;
@@ -109,6 +119,7 @@ class Live extends Model
         $hasTicket = false;
         $isInvited = ! $this->is_private;
         $participant = null;
+        $forAdmin = $viewer?->isAdmin() === true;
 
         if ($viewer) {
             $hasTicket = $this->tickets()->where('user_id', $viewer->id)->exists();
@@ -118,6 +129,16 @@ class Live extends Model
             }
             $participant = $this->participants()->where('user_id', $viewer->id)->first();
         }
+
+        $goals = $this->relationLoaded('goals')
+            ? $this->goals
+            : $this->goals()->get();
+
+        $goalsPayload = $goals
+            ->map(fn (LiveGoal $g) => $g->toApiArray($forAdmin))
+            ->when(! $forAdmin, fn ($c) => $c->filter(fn (array $g) => $g['visible_to_viewers']))
+            ->values()
+            ->all();
 
         return [
             'id' => $this->id,
@@ -134,6 +155,7 @@ class Live extends Model
             'started_at' => $this->started_at?->toIso8601String(),
             'ended_at' => $this->ended_at?->toIso8601String(),
             'room_url' => $this->roomUrl(),
+            'donation_chips' => LiveDonation::CHIPS,
             'participants_count' => $this->participants()
                 ->whereNull('kicked_at')
                 ->where('role', 'viewer')
@@ -141,12 +163,14 @@ class Live extends Model
             'invite_ids' => $this->relationLoaded('invites')
                 ? $this->invites->pluck('user_id')->values()->all()
                 : $this->invites()->pluck('user_id')->values()->all(),
+            'goals' => $goalsPayload,
             'viewer' => $viewer ? [
                 'has_ticket' => $hasTicket || $this->isGratis() || $viewer->isAdmin(),
                 'is_invited' => $isInvited || $viewer->isAdmin(),
                 'chat_muted' => (bool) ($participant?->chat_muted),
                 'is_kicked' => (bool) $participant?->kicked_at,
-                'role' => $viewer->isAdmin() ? 'host' : 'viewer',
+                'is_moderator' => (bool) ($participant?->is_moderator),
+                'role' => $viewer->isAdmin() ? 'host' : ((bool) ($participant?->is_moderator) ? 'moderator' : 'viewer'),
             ] : null,
         ];
     }

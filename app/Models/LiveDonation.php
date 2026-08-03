@@ -5,25 +5,21 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
-class LiveParticipant extends Model
+class LiveDonation extends Model
 {
+    public const CHIPS = [50, 100, 150, 200];
+
     protected $fillable = [
         'live_id',
         'user_id',
-        'role',
-        'is_moderator',
-        'chat_muted',
-        'joined_at',
-        'kicked_at',
+        'live_goal_id',
+        'credits',
     ];
 
     protected function casts(): array
     {
         return [
-            'is_moderator' => 'boolean',
-            'chat_muted' => 'boolean',
-            'joined_at' => 'datetime',
-            'kicked_at' => 'datetime',
+            'credits' => 'integer',
         ];
     }
 
@@ -35,5 +31,10 @@ class LiveParticipant extends Model
     public function user(): BelongsTo
     {
         return $this->belongsTo(User::class);
+    }
+
+    public function goal(): BelongsTo
+    {
+        return $this->belongsTo(LiveGoal::class, 'live_goal_id');
     }
 }

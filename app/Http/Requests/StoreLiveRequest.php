@@ -3,6 +3,7 @@
 namespace App\Http\Requests;
 
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Validation\Validator;
 
 class StoreLiveRequest extends FormRequest
 {
@@ -16,7 +17,8 @@ class StoreLiveRequest extends FormRequest
         return [
             'titulo' => ['required', 'string', 'max:200'],
             'descricao' => ['nullable', 'string', 'max:5000'],
-            'starts_at' => ['required', 'date', 'after:now'],
+            'instant' => ['sometimes', 'boolean'],
+            'starts_at' => ['nullable', 'date'],
             'is_private' => ['sometimes', 'boolean'],
             'price_credits' => ['sometimes', 'integer', 'min:0', 'max:100000'],
             'max_participants' => ['required', 'integer', 'min:1', 'max:1000'],
@@ -26,12 +28,26 @@ class StoreLiveRequest extends FormRequest
         ];
     }
 
+    public function withValidator(Validator $validator): void
+    {
+        $validator->after(function (Validator $validator) {
+            $instant = $this->boolean('instant');
+            $startsAt = $this->input('starts_at');
+
+            if (! $instant && blank($startsAt)) {
+                $validator->errors()->add('starts_at', 'Informe a data/hora ou marque como live instantânea.');
+            }
+
+            if (! $instant && $startsAt && strtotime((string) $startsAt) < now()->subMinute()->timestamp) {
+                $validator->errors()->add('starts_at', 'A live agendada deve ser no futuro.');
+            }
+        });
+    }
+
     public function messages(): array
     {
         return [
             'titulo.required' => 'O título é obrigatório.',
-            'starts_at.required' => 'A data/hora de início é obrigatória.',
-            'starts_at.after' => 'A live deve ser agendada para o futuro.',
             'max_participants.required' => 'Informe o limite de participantes.',
         ];
     }
