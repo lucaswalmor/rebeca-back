@@ -233,6 +233,10 @@ class AdminLiveController extends Controller
             'sort_order' => (int) $live->goals()->max('sort_order') + 1,
         ]);
 
+        // Nova meta vira a única visível no chat (admin + clientes)
+        LiveGoal::featureExclusive($live->id, $goal->id);
+        $goal->refresh();
+
         return response()->json([
             'success' => true,
             'goal' => $goal->toApiArray(true),
@@ -265,7 +269,18 @@ class AdminLiveController extends Controller
             }
         }
         if (array_key_exists('hidden_by_admin', $data)) {
-            $goal->hidden_by_admin = (bool) $data['hidden_by_admin'];
+            if (! (bool) $data['hidden_by_admin']) {
+                // Tornar visível: exclusividade — as demais ficam ocultas
+                $goal->save();
+                LiveGoal::featureExclusive($live->id, $goal->id);
+
+                return response()->json([
+                    'success' => true,
+                    'goal' => $goal->fresh()->toApiArray(true),
+                    'data' => $live->fresh(['invites', 'goals'])->toApiArray($request->user()),
+                ]);
+            }
+            $goal->hidden_by_admin = true;
         }
         $goal->save();
 

@@ -56,10 +56,24 @@ class LiveGoal extends Model
         return (int) min(100, round(($this->current_credits / $this->target_credits) * 100));
     }
 
-    /** Visível para clientes: não oculta pelo admin e não completou 100%. */
+    /** Visível no chat: apenas metas não ocultas pelo admin (só uma deve estar ativa). */
     public function isVisibleToViewers(): bool
     {
-        return ! $this->hidden_by_admin && ! $this->isCompleted();
+        return ! $this->hidden_by_admin;
+    }
+
+    /** Garante exclusividade: só esta meta fica visível na live. */
+    public static function featureExclusive(int $liveId, int $goalId): void
+    {
+        static::query()
+            ->where('live_id', $liveId)
+            ->where('id', '!=', $goalId)
+            ->update(['hidden_by_admin' => true]);
+
+        static::query()
+            ->where('live_id', $liveId)
+            ->where('id', $goalId)
+            ->update(['hidden_by_admin' => false]);
     }
 
     public function toApiArray(bool $forAdmin = false): array
