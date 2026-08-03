@@ -63,10 +63,20 @@ class AdminLiveController extends Controller
                 ? now()
                 : ($data['starts_at'] ?? now());
 
+            $titulo = $instant
+                ? (filled($data['titulo'] ?? null)
+                    ? (string) $data['titulo']
+                    : 'Live ao vivo — '.$startsAt->timezone(config('app.timezone'))->format('d/m/Y H:i'))
+                : (string) $data['titulo'];
+
+            $descricao = $instant
+                ? (array_key_exists('descricao', $data) ? ($data['descricao'] ?: null) : 'Live iniciada agora.')
+                : ($data['descricao'] ?? null);
+
             $live = Live::create([
                 'admin_id' => $request->user()->id,
-                'titulo' => $data['titulo'],
-                'descricao' => $data['descricao'] ?? null,
+                'titulo' => $titulo,
+                'descricao' => $descricao,
                 'starts_at' => $startsAt,
                 'is_private' => $isPrivate,
                 'price_credits' => (int) ($data['price_credits'] ?? 0),

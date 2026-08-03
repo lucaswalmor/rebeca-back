@@ -14,8 +14,10 @@ class StoreLiveRequest extends FormRequest
 
     public function rules(): array
     {
+        $instant = $this->boolean('instant');
+
         return [
-            'titulo' => ['required', 'string', 'max:200'],
+            'titulo' => [$instant ? 'nullable' : 'required', 'string', 'max:200'],
             'descricao' => ['nullable', 'string', 'max:5000'],
             'instant' => ['sometimes', 'boolean'],
             'starts_at' => ['nullable', 'date'],

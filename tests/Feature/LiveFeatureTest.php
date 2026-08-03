@@ -80,7 +80,6 @@ class LiveFeatureTest extends TestCase
         Sanctum::actingAs($admin);
 
         $response = $this->postJson('/api/admin/lives', [
-            'titulo' => 'Live agora',
             'instant' => true,
             'is_private' => false,
             'price_credits' => 0,
@@ -90,6 +89,9 @@ class LiveFeatureTest extends TestCase
 
         $response->assertCreated()
             ->assertJsonPath('data.status', 'ao_vivo');
+
+        $this->assertStringStartsWith('Live ao vivo —', (string) $response->json('data.titulo'));
+        $this->assertSame('Live iniciada agora.', $response->json('data.descricao'));
     }
 
     public function test_subscriber_can_join_free_live_and_get_token(): void
