@@ -30,7 +30,7 @@ class NotifySubscribersOfLive
         $query = User::query()
             ->where('is_admin', false)
             ->where('is_blocked', false)
-            ->where('notify_new_posts_email', true)
+            ->where('notify_live_email', true)
             ->whereNotNull('email');
 
         if ($live->is_private) {

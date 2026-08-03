@@ -1419,6 +1419,15 @@ class ChatController extends Controller
             return;
         }
 
+        // Preferência do cliente: e-mail de nova mensagem no chat
+        if (! $recipient->isAdmin() && ! $recipient->notify_new_chat_message_email) {
+            ChatLogger::info('Recipient disabled chat email notifications', [
+                'recipient_id' => $recipient->id,
+            ]);
+
+            return;
+        }
+
         if (ChatLogger::isOnline($recipient)) {
             ChatLogger::info('Recipient online, skip email', [
                 'recipient_id' => $recipient->id,

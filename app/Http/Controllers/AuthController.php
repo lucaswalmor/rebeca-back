@@ -94,6 +94,8 @@ class AuthController extends Controller
             'apelido' => $user->apelido,
             'path_img_avatar' => $user->path_img_avatar,
             'notify_new_posts_email' => (bool) $user->notify_new_posts_email,
+            'notify_new_chat_message_email' => (bool) $user->notify_new_chat_message_email,
+            'notify_live_email' => (bool) $user->notify_live_email,
             'assinatura' => $assinaturaAtiva,
             'status_assinatura_descricao' => $statusAssinaturaDescricao,
             'status_assinatura' => $statusAssinaturaReal,
@@ -208,6 +210,9 @@ class AuthController extends Controller
             'telefone' => $request->telefone,
             'data_nascimento' => $request->data_nascimento,
             'is_admin' => false,
+            'notify_new_posts_email' => true,
+            'notify_new_chat_message_email' => true,
+            'notify_live_email' => true,
         ]);
 
         return response()->json([

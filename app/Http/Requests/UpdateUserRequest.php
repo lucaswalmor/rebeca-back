@@ -34,6 +34,8 @@ class UpdateUserRequest extends FormRequest
             'data_nascimento' => 'sometimes|date',
             'is_admin' => 'sometimes|boolean',
             'notify_new_posts_email' => 'sometimes|boolean',
+            'notify_new_chat_message_email' => 'sometimes|boolean',
+            'notify_live_email' => 'sometimes|boolean',
             'instagram' => 'nullable|string|max:255',
             'telegram' => 'nullable|string|max:255',
             'whatsapp' => 'nullable|string|max:255',
