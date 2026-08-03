@@ -3,6 +3,7 @@
 namespace App\Http\Requests;
 
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Validation\Rule;
 use Illuminate\Validation\Validator;
 
 class StoreLiveRequest extends FormRequest
@@ -12,12 +13,34 @@ class StoreLiveRequest extends FormRequest
         return $this->user()?->isAdmin() === true;
     }
 
+    protected function prepareForValidation(): void
+    {
+        if (! $this->boolean('instant')) {
+            return;
+        }
+
+        // Live instantânea: título/horário genéricos se o admin não enviou
+        $this->merge([
+            'instant' => true,
+            'titulo' => filled($this->input('titulo'))
+                ? $this->input('titulo')
+                : ('Live ao vivo — '.now()->timezone(config('app.timezone'))->format('d/m/Y H:i')),
+            'descricao' => $this->has('descricao')
+                ? $this->input('descricao')
+                : 'Live iniciada agora.',
+            'starts_at' => $this->input('starts_at') ?: now()->toIso8601String(),
+        ]);
+    }
+
     public function rules(): array
     {
-        $instant = $this->boolean('instant');
-
         return [
-            'titulo' => [$instant ? 'nullable' : 'required', 'string', 'max:200'],
+            'titulo' => [
+                Rule::requiredIf(fn () => ! $this->boolean('instant')),
+                'nullable',
+                'string',
+                'max:200',
+            ],
             'descricao' => ['nullable', 'string', 'max:5000'],
             'instant' => ['sometimes', 'boolean'],
             'starts_at' => ['nullable', 'date'],
