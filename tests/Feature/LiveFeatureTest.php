@@ -74,6 +74,24 @@ class LiveFeatureTest extends TestCase
         $second->assertStatus(422);
     }
 
+    public function test_admin_can_create_instant_live(): void
+    {
+        $admin = $this->createUser(['is_admin' => true, 'apelido' => 'admin2']);
+        Sanctum::actingAs($admin);
+
+        $response = $this->postJson('/api/admin/lives', [
+            'titulo' => 'Live agora',
+            'instant' => true,
+            'is_private' => false,
+            'price_credits' => 0,
+            'max_participants' => 30,
+            'notify' => false,
+        ]);
+
+        $response->assertCreated()
+            ->assertJsonPath('data.status', 'ao_vivo');
+    }
+
     public function test_subscriber_can_join_free_live_and_get_token(): void
     {
         Config::set('services.livekit.api_key', 'APItestkey');
