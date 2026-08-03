@@ -166,9 +166,13 @@ Route::middleware('auth:sanctum')
         Route::post('/lives/{id}/start', 'start');
         Route::post('/lives/{id}/end', 'end');
         Route::post('/lives/{id}/toggle-chat', 'toggleChat');
+        Route::post('/lives/{id}/goals', 'storeGoal');
+        Route::patch('/lives/{id}/goals/{goalId}', 'updateGoal');
+        Route::delete('/lives/{id}/goals/{goalId}', 'destroyGoal');
         Route::get('/lives/{id}/participants', 'participants');
         Route::post('/lives/{id}/participants/{userId}/mute-chat', 'muteChatUser');
         Route::post('/lives/{id}/participants/{userId}/kick', 'kick');
+        Route::post('/lives/{id}/participants/{userId}/moderator', 'setModerator');
     });
 
 Route::middleware('auth:sanctum')
@@ -177,6 +181,7 @@ Route::middleware('auth:sanctum')
         Route::get('/lives/{uuid}', 'show');
         Route::post('/lives/{uuid}/join', 'join');
         Route::post('/lives/{uuid}/token', 'token');
+        Route::post('/lives/{uuid}/donate', 'donate');
     });
 
 // Broadcasting auth (Sanctum Bearer)
