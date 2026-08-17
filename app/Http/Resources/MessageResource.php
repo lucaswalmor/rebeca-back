@@ -47,6 +47,7 @@ class MessageResource extends JsonResource
             'edited_at' => $this->edited_at?->toIso8601String(),
             'delivered_at' => $this->delivered_at?->toIso8601String(),
             'read_at' => $this->read_at?->toIso8601String(),
+            'sent_by_ai' => $user && $user->isAdmin() ? (bool) $this->sent_by_ai : false,
             'created_at' => $this->created_at?->toIso8601String(),
             'updated_at' => $this->updated_at?->toIso8601String(),
             'user' => $this->whenLoaded('user', fn () => [

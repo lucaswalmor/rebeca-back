@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\AdminAssinantesController;
 use App\Http\Controllers\AdminLiveController;
+use App\Http\Controllers\AiChatController;
 use App\Http\Controllers\AssinaturaController;
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\ChamadaVideoController;
@@ -154,6 +155,15 @@ Route::middleware('auth:sanctum')
         Route::post('/assinantes/{id}/desbloquear-chat', 'desbloquearChat');
         Route::post('/assinantes/{id}/creditar', 'creditar');
         Route::delete('/assinantes/{id}', 'destroy');
+    });
+
+Route::middleware('auth:sanctum')
+    ->controller(AiChatController::class)
+    ->prefix('admin/ai-chat')
+    ->group(function () {
+        Route::get('/', 'show');
+        Route::put('/', 'update');
+        Route::post('/conversations/{id}/toggle', 'toggleConversation');
     });
 
 Route::middleware('auth:sanctum')

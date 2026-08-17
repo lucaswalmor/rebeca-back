@@ -24,6 +24,7 @@ class Message extends Model
         'edited_at',
         'delivered_at',
         'read_at',
+        'sent_by_ai',
     ];
 
     protected function casts(): array
@@ -34,6 +35,7 @@ class Message extends Model
             'edited_at' => 'datetime',
             'delivered_at' => 'datetime',
             'read_at' => 'datetime',
+            'sent_by_ai' => 'boolean',
         ];
     }
 

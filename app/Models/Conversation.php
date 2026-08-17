@@ -20,6 +20,9 @@ class Conversation extends Model
         'subscriber_last_read_at',
         'admin_cleared_at',
         'subscriber_cleared_at',
+        'ai_enabled',
+        'last_human_admin_at',
+        'ai_pending_message_id',
     ];
 
     protected function casts(): array
@@ -30,6 +33,8 @@ class Conversation extends Model
             'subscriber_last_read_at' => 'datetime',
             'admin_cleared_at' => 'datetime',
             'subscriber_cleared_at' => 'datetime',
+            'ai_enabled' => 'boolean',
+            'last_human_admin_at' => 'datetime',
         ];
     }
 

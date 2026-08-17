@@ -51,6 +51,7 @@ class ConversationResource extends JsonResource
             'chat_blocked' => (bool) ($this->relationLoaded('subscriber')
                 ? ($this->subscriber?->chat_blocked ?? false)
                 : false),
+            'ai_enabled' => $user && $user->isAdmin() ? (bool) $this->ai_enabled : null,
             'latest_message' => $latest ? [
                 'id' => $latest->id,
                 'type' => $latest->type,
