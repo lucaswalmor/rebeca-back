@@ -286,6 +286,21 @@ class AdminAssinantesController extends Controller
         }
 
         $vencimento = $ativa?->data_fim ?? $ultima?->data_fim;
+        $referencia = $ativa ?? $ultima;
+        $valor = round((float) ($referencia?->valor ?? 0), 2);
+        $paidAmount = round((float) ($referencia?->paid_amount ?? 0), 2);
+        if ($valor <= 0 && $paidAmount > 0) {
+            $valor = $paidAmount;
+        }
+
+        $totalGasto = round((float) $assinaturas
+            ->filter(fn (Assinatura $a) => $a->status === 'aprovado')
+            ->sum(function (Assinatura $a) {
+                $paid = (float) ($a->paid_amount ?? 0);
+                $planValue = (float) ($a->valor ?? 0);
+
+                return $paid > 0 ? $paid : $planValue;
+            }), 2);
 
         return [
             'id' => $user->id,
@@ -293,12 +308,16 @@ class AdminAssinantesController extends Controller
             'apelido' => $user->apelido,
             'email' => $user->email,
             'telefone' => $user->telefone,
+            'path_img_avatar' => $user->path_img_avatar,
             'is_blocked' => (bool) $user->is_blocked,
             'chat_blocked' => (bool) $user->chat_blocked,
             'has_active_subscription' => (bool) $ativa,
             'status' => $status,
             'status_key' => $statusKey,
             'plano' => $ativa?->tipo_assinatura ?? $ultima?->tipo_assinatura,
+            'valor' => $valor,
+            'paid_amount' => $paidAmount,
+            'total_gasto' => $totalGasto,
             'vencimento' => $vencimento?->format('Y-m-d'),
             'vencimento_formatado' => $vencimento?->format('d/m/Y'),
             'creditos' => (int) round((float) $user->creditos),
