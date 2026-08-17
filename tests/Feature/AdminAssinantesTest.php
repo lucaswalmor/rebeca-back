@@ -140,4 +140,40 @@ class AdminAssinantesTest extends TestCase
             ->assertJsonPath('data.0.valor', 120)
             ->assertJsonPath('data.0.total_gasto', 120);
     }
+
+    public function test_receita_estimada_soma_todos_os_ativos_nao_so_a_pagina(): void
+    {
+        $admin = $this->createUser([
+            'is_admin' => true,
+            'apelido' => 'admin',
+            'email' => 'admin@example.com',
+        ]);
+
+        for ($i = 1; $i <= 3; $i++) {
+            $subscriber = $this->createUser([
+                'nome' => "Ativo {$i}",
+                'apelido' => "ativo{$i}",
+                'email' => "ativo{$i}@example.com",
+            ]);
+
+            Assinatura::create([
+                'user_id' => $subscriber->id,
+                'data_inicio' => now()->subDay(),
+                'data_fim' => now()->addMonth(),
+                'tipo_assinatura' => 'mensal',
+                'status' => 'aprovado',
+                'valor' => 19.90,
+                'paid_amount' => 19.90,
+            ]);
+        }
+
+        Sanctum::actingAs($admin);
+
+        $response = $this->getJson('/api/admin/assinantes?status=ativo&per_page=1&page=1');
+
+        $response->assertOk()
+            ->assertJsonPath('meta.total', 3)
+            ->assertJsonPath('meta.receita_estimada', 59.7);
+        $this->assertCount(1, $response->json('data'));
+    }
 }

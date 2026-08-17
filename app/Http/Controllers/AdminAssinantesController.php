@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Assinatura;
 use App\Models\User;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
@@ -65,6 +66,7 @@ class AdminAssinantesController extends Controller
                 });
         }
 
+        $receitaEstimada = $this->sumActiveSubscriptionValue(clone $query, $hoje);
         $paginator = $query->orderByDesc('id')->paginate($perPage);
 
         $items = $paginator->getCollection()->map(function (User $user) use ($hoje) {
@@ -78,6 +80,7 @@ class AdminAssinantesController extends Controller
                 'last_page' => $paginator->lastPage(),
                 'per_page' => $paginator->perPage(),
                 'total' => $paginator->total(),
+                'receita_estimada' => $receitaEstimada,
             ],
         ]);
     }
@@ -241,6 +244,24 @@ class AdminAssinantesController extends Controller
                 'status' => 'recusado',
                 'data_fim' => $hoje->copy()->subDay(),
             ]);
+    }
+
+    private function sumActiveSubscriptionValue(Builder $userQuery, $hoje): float
+    {
+        $latestActiveIds = Assinatura::query()
+            ->selectRaw('MAX(id) as id')
+            ->where('status', 'aprovado')
+            ->where('data_inicio', '<=', $hoje)
+            ->where('data_fim', '>=', $hoje)
+            ->whereIn('user_id', (clone $userQuery)->select('users.id'))
+            ->groupBy('user_id');
+
+        $total = Assinatura::query()
+            ->whereIn('id', $latestActiveIds)
+            ->selectRaw('COALESCE(SUM(CASE WHEN COALESCE(valor, 0) > 0 THEN valor ELSE COALESCE(paid_amount, 0) END), 0) as total')
+            ->value('total');
+
+        return round((float) $total, 2);
     }
 
     private function mapSubscriber(User $user, $hoje = null): array
