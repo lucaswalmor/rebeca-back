@@ -89,7 +89,7 @@ class ChamadaVideoController extends Controller
             'chamada_id' => $chamada->id,
         ]);
 
-        $response = Http::post('https://api.infinitepay.io/invoices/public/checkout/links', $payload);
+        $response = Http::post(config('services.infinitepay.links_url'), $payload);
 
         if (! $response->successful()) {
             $chamada->delete();

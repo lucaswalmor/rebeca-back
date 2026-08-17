@@ -70,7 +70,7 @@ class PostCompraTest extends TestCase
         ]);
 
         Http::fake([
-            'api.infinitepay.io/*' => Http::response([
+            'api.checkout.infinitepay.io/*' => Http::response([
                 'checkout_url' => 'https://checkout.infinitepay.io/test-link',
             ], 200),
         ]);

@@ -18,6 +18,15 @@ return [
 
     'default' => env('DB_CONNECTION', 'sqlite'),
 
+    'production_pull' => [
+        'host' => env('PROD_DB_HOST'),
+        'port' => env('PROD_DB_PORT', 3306),
+        'database' => env('PROD_DB_DATABASE'),
+        'username' => env('PROD_DB_USERNAME'),
+        'password' => env('PROD_DB_PASSWORD'),
+        'local_target' => env('PROD_DB_LOCAL_TARGET'),
+    ],
+
     /*
     |--------------------------------------------------------------------------
     | Database Connections

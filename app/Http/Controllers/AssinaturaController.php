@@ -125,7 +125,7 @@ class AssinaturaController extends Controller
             ]);
 
             // Fazer requisição para a API da InfinitePay
-            $response = Http::post('https://api.infinitepay.io/invoices/public/checkout/links', $payload);
+            $response = Http::post(config('services.infinitepay.links_url'), $payload);
 
             if ($response->successful()) {
                 $data = $response->json();
@@ -269,7 +269,7 @@ class AssinaturaController extends Controller
                 ],
             ];
 
-            $response = Http::post('https://api.infinitepay.io/invoices/public/checkout/links', $payload);
+            $response = Http::post(config('services.infinitepay.links_url'), $payload);
 
             return response()->json([
                 'success' => $response->successful(),
@@ -496,7 +496,7 @@ class AssinaturaController extends Controller
                     'slug' => $request->slug,
                 ];
 
-                $infinitePayResponse = Http::post('https://api.infinitepay.io/invoices/public/checkout/payment_check', $infinitePayPayload);
+                $infinitePayResponse = Http::post(config('services.infinitepay.payment_check_url'), $infinitePayPayload);
 
                 Log::info('Resposta da InfinitePay:', [
                     'status' => $infinitePayResponse->status(),
@@ -727,7 +727,7 @@ class AssinaturaController extends Controller
         ]);
 
         try {
-            $infinitePayResponse = Http::post('https://api.infinitepay.io/invoices/public/checkout/payment_check', [
+            $infinitePayResponse = Http::post(config('services.infinitepay.payment_check_url'), [
                 'handle' => 'rehantunes06',
                 'order_nsu' => $request->order_nsu,
                 'transaction_nsu' => $request->transaction_nsu,
@@ -897,7 +897,7 @@ class AssinaturaController extends Controller
         ]);
 
         try {
-            $infinitePayResponse = Http::post('https://api.infinitepay.io/invoices/public/checkout/payment_check', [
+            $infinitePayResponse = Http::post(config('services.infinitepay.payment_check_url'), [
                 'handle' => config('services.infinitepay.handle', 'rehantunes06'),
                 'order_nsu' => $request->order_nsu,
                 'transaction_nsu' => $request->transaction_nsu,
@@ -1027,7 +1027,7 @@ class AssinaturaController extends Controller
         ]);
 
         try {
-            $infinitePayResponse = Http::post('https://api.infinitepay.io/invoices/public/checkout/payment_check', [
+            $infinitePayResponse = Http::post(config('services.infinitepay.payment_check_url'), [
                 'handle' => 'rehantunes06',
                 'order_nsu' => $request->order_nsu,
                 'transaction_nsu' => $request->transaction_nsu,
@@ -1156,7 +1156,7 @@ class AssinaturaController extends Controller
         ]);
 
         try {
-            $infinitePayResponse = Http::post('https://api.infinitepay.io/invoices/public/checkout/payment_check', [
+            $infinitePayResponse = Http::post(config('services.infinitepay.payment_check_url'), [
                 'handle' => 'rehantunes06',
                 'order_nsu' => $request->order_nsu,
                 'transaction_nsu' => $request->transaction_nsu,
@@ -1288,7 +1288,7 @@ class AssinaturaController extends Controller
         ]);
 
         try {
-            $infinitePayResponse = Http::post('https://api.infinitepay.io/invoices/public/checkout/payment_check', [
+            $infinitePayResponse = Http::post(config('services.infinitepay.payment_check_url'), [
                 'handle' => 'rehantunes06',
                 'order_nsu' => $request->order_nsu,
                 'transaction_nsu' => $request->transaction_nsu,
@@ -1420,7 +1420,7 @@ class AssinaturaController extends Controller
         ]);
 
         try {
-            $infinitePayResponse = Http::post('https://api.infinitepay.io/invoices/public/checkout/payment_check', [
+            $infinitePayResponse = Http::post(config('services.infinitepay.payment_check_url'), [
                 'handle' => 'rehantunes06',
                 'order_nsu' => $request->order_nsu,
                 'transaction_nsu' => $request->transaction_nsu,

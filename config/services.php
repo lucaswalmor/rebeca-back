@@ -42,6 +42,8 @@ return [
             'INFINITEPAY_WEBHOOK_URL',
             'https://api.becalima007.com.br/api/webhooks/infinitepay'
         ),
+        'links_url' => env('INFINITEPAY_LINKS_URL', 'https://api.checkout.infinitepay.io/links'),
+        'payment_check_url' => env('INFINITEPAY_PAYMENT_CHECK_URL', 'https://api.checkout.infinitepay.io/payment_check'),
     ],
 
     'livekit' => [

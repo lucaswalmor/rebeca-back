@@ -102,7 +102,7 @@ class ConteudoExclusivoController extends Controller
             'conteudo_exclusivo_id' => $pedido->id,
         ]);
 
-        $response = Http::post('https://api.infinitepay.io/invoices/public/checkout/links', $payload);
+        $response = Http::post(config('services.infinitepay.links_url'), $payload);
 
         if (! $response->successful()) {
             $pedido->delete();
