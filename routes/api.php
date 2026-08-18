@@ -158,12 +158,12 @@ Route::middleware('auth:sanctum')
     });
 
 Route::middleware('auth:sanctum')
+    ->prefix('admin')
     ->controller(AiChatController::class)
-    ->prefix('admin/ai-chat')
     ->group(function () {
-        Route::get('/', 'show');
-        Route::put('/', 'update');
-        Route::post('/conversations/{id}/toggle', 'toggleConversation');
+        Route::get('/ai-chat', 'show');
+        Route::put('/ai-chat', 'update');
+        Route::post('/ai-chat/conversations/{id}/toggle', 'toggleConversation');
     });
 
 Route::middleware('auth:sanctum')
