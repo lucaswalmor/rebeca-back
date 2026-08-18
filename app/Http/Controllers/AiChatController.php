@@ -36,6 +36,8 @@ class AiChatController extends Controller
                 'id' => $conversation->id,
                 'subscriber_id' => $conversation->subscriber_id,
                 'ai_enabled' => (bool) $conversation->ai_enabled,
+                'ai_blocked' => $conversation->isAiBlocked(),
+                'ai_blocked_reason' => $conversation->ai_blocked_reason,
                 'last_message_at' => $conversation->last_message_at?->toIso8601String(),
                 'subscriber' => $conversation->subscriber ? [
                     'id' => $conversation->subscriber->id,
@@ -55,6 +57,9 @@ class AiChatController extends Controller
                 'default_prompt' => (string) config('xai.default_prompt'),
                 'reply_delay_minutes' => (int) ($settings->reply_delay_minutes ?: config('xai.default_reply_delay_minutes', 5)),
                 'takeover_minutes' => (int) ($settings->takeover_minutes ?: config('xai.default_takeover_minutes', 15)),
+                'quiet_hours_enabled' => (bool) ($settings->quiet_hours_enabled ?? true),
+                'quiet_hours_start' => $settings->quiet_hours_start ?: (string) config('xai.default_quiet_hours_start', '02:00'),
+                'quiet_hours_end' => $settings->quiet_hours_end ?: (string) config('xai.default_quiet_hours_end', '11:00'),
                 'has_api_key' => filled(config('xai.api_key')),
                 'model' => (string) config('xai.model'),
                 'credits' => $this->billing->balance(),
@@ -75,6 +80,9 @@ class AiChatController extends Controller
                 'system_prompt' => $request->input('system_prompt'),
                 'reply_delay_minutes' => $request->integer('reply_delay_minutes'),
                 'takeover_minutes' => $request->integer('takeover_minutes'),
+                'quiet_hours_enabled' => $request->boolean('quiet_hours_enabled'),
+                'quiet_hours_start' => $request->input('quiet_hours_start'),
+                'quiet_hours_end' => $request->input('quiet_hours_end'),
             ]
         );
 
@@ -110,12 +118,14 @@ class AiChatController extends Controller
             ? $request->boolean('ai_enabled')
             : ! $conversation->ai_enabled;
 
-        $conversation->forceFill(['ai_enabled' => $enabled])->save();
+        $this->aiChat->setConversationAiEnabled($conversation, $enabled);
 
         return response()->json([
             'data' => [
                 'id' => $conversation->id,
                 'ai_enabled' => (bool) $conversation->ai_enabled,
+                'ai_blocked' => $conversation->isAiBlocked(),
+                'ai_blocked_reason' => $conversation->ai_blocked_reason,
             ],
         ]);
     }

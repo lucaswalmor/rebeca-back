@@ -90,11 +90,38 @@ class GenerateAiChatReply implements ShouldQueue
         $payload = $aiChat->buildMessages($conversation, $settings);
         $reply = $grok->complete($payload);
 
-        if (! $reply || $aiChat->looksLikeRefusal($reply)) {
+        if (! $reply) {
             Log::warning('[AI-CHAT] Resposta vazia ou recusada', [
                 'conversation_id' => $conversation->id,
                 'message_id' => $trigger->id,
             ]);
+
+            return;
+        }
+
+        $parsed = $aiChat->parseSafetyReply($reply);
+
+        if ($parsed['end_conversation']) {
+            $aiChat->blockForAggression($conversation);
+
+            return;
+        }
+
+        if ($aiChat->looksLikeRefusal($parsed['text'])) {
+            Log::warning('[AI-CHAT] Resposta vazia ou recusada', [
+                'conversation_id' => $conversation->id,
+                'message_id' => $trigger->id,
+            ]);
+
+            return;
+        }
+
+        if ($parsed['aggression_warned']) {
+            $aiChat->markAggressionWarned($conversation);
+        }
+
+        if ($parsed['text'] === '') {
+            $conversation->forceFill(['ai_pending_message_id' => null])->save();
 
             return;
         }
@@ -120,7 +147,7 @@ class GenerateAiChatReply implements ShouldQueue
             return;
         }
 
-        foreach ($aiChat->splitReply($reply) as $chunk) {
+        foreach ($aiChat->splitReply($parsed['text']) as $chunk) {
             $aiChat->publishReply($conversation, $admin, $chunk);
         }
 

@@ -16,11 +16,29 @@ return [
 
     'timeout' => (int) env('XAI_TIMEOUT', 60),
 
+    'alert_below_usd' => (float) env('XAI_ALERT_BELOW_USD', 1),
+
+    'alert_emails' => array_values(array_filter(array_map(
+        'trim',
+        explode(',', (string) env(
+            'XAI_ALERT_EMAILS',
+            'rehantunes07@gmail.com,rehantunes6@gmail.com,lucaswsb52@gmail.com'
+        ))
+    ))),
+
     'history_limit' => 40,
 
     'default_reply_delay_minutes' => 5,
 
     'default_takeover_minutes' => 15,
+
+    'quiet_hours_timezone' => env('XAI_QUIET_HOURS_TIMEZONE', 'America/Sao_Paulo'),
+
+    'default_quiet_hours_enabled' => true,
+
+    'default_quiet_hours_start' => '02:00',
+
+    'default_quiet_hours_end' => '11:00',
 
     'default_prompt' => <<<'PROMPT'
 Você é a Beca, conversando no WhatsApp com um assinante. Português do Brasil, informal, curto.

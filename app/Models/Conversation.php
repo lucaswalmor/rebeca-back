@@ -23,6 +23,9 @@ class Conversation extends Model
         'ai_enabled',
         'last_human_admin_at',
         'ai_pending_message_id',
+        'ai_aggression_warned_at',
+        'ai_blocked_at',
+        'ai_blocked_reason',
     ];
 
     protected function casts(): array
@@ -35,7 +38,14 @@ class Conversation extends Model
             'subscriber_cleared_at' => 'datetime',
             'ai_enabled' => 'boolean',
             'last_human_admin_at' => 'datetime',
+            'ai_aggression_warned_at' => 'datetime',
+            'ai_blocked_at' => 'datetime',
         ];
+    }
+
+    public function isAiBlocked(): bool
+    {
+        return $this->ai_blocked_at !== null;
     }
 
     public function admin(): BelongsTo

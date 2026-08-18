@@ -14,6 +14,9 @@ class AiChatSetting extends Model
         'system_prompt',
         'reply_delay_minutes',
         'takeover_minutes',
+        'quiet_hours_enabled',
+        'quiet_hours_start',
+        'quiet_hours_end',
     ];
 
     protected function casts(): array
@@ -22,6 +25,7 @@ class AiChatSetting extends Model
             'enabled' => 'boolean',
             'reply_delay_minutes' => 'integer',
             'takeover_minutes' => 'integer',
+            'quiet_hours_enabled' => 'boolean',
         ];
     }
 

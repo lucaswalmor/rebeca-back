@@ -2,9 +2,11 @@
 
 namespace App\Services;
 
+use App\Mail\GrokLowBalanceMail;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Mail;
 
 class GrokBillingService
 {
@@ -74,10 +76,13 @@ class GrokBillingService
 
             $cents = (int) data_get($response->json(), 'total.val', 0);
             $remainingCents = abs($cents);
+            $remainingUsd = round($remainingCents / 100, 2);
+
+            $this->notifyIfLow($remainingUsd);
 
             return [
                 'configured' => true,
-                'remaining_usd' => round($remainingCents / 100, 2),
+                'remaining_usd' => $remainingUsd,
                 'remaining_cents' => $remainingCents,
                 'error' => null,
             ];
@@ -112,5 +117,34 @@ class GrokBillingService
             ?: '');
 
         return $teamId !== '' ? $teamId : null;
+    }
+
+    private function notifyIfLow(float $remainingUsd): void
+    {
+        $threshold = (float) config('xai.alert_below_usd', 1);
+        $emails = config('xai.alert_emails', []);
+
+        if (! is_array($emails) || $emails === []) {
+            return;
+        }
+
+        if ($remainingUsd >= $threshold) {
+            Cache::forget('xai.low_balance_alert_sent');
+
+            return;
+        }
+
+        if (Cache::get('xai.low_balance_alert_sent')) {
+            return;
+        }
+
+        try {
+            Mail::to($emails)->send(new GrokLowBalanceMail($remainingUsd));
+            Cache::forever('xai.low_balance_alert_sent', true);
+        } catch (\Throwable $e) {
+            Log::error('[AI-CHAT] Falha ao enviar alerta de saldo Grok', [
+                'error' => $e->getMessage(),
+            ]);
+        }
     }
 }

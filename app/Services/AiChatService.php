@@ -11,6 +11,7 @@ use App\Models\Conversation;
 use App\Models\Message;
 use App\Models\User;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\Log;
 
 class AiChatService
 {
@@ -24,6 +25,9 @@ class AiChatService
                 'system_prompt' => null,
                 'reply_delay_minutes' => (int) config('xai.default_reply_delay_minutes', 5),
                 'takeover_minutes' => (int) config('xai.default_takeover_minutes', 15),
+                'quiet_hours_enabled' => (bool) config('xai.default_quiet_hours_enabled', true),
+                'quiet_hours_start' => (string) config('xai.default_quiet_hours_start', '02:00'),
+                'quiet_hours_end' => (string) config('xai.default_quiet_hours_end', '11:00'),
             ]
         );
     }
@@ -61,10 +65,10 @@ class AiChatService
 
         $conversation->forceFill(['ai_pending_message_id' => $message->id])->save();
 
-        $delayMinutes = max(0, (int) $settings->reply_delay_minutes);
+        $readyAt = $this->replyReadyAt($conversation, $settings, $message);
 
         GenerateAiChatReply::dispatch($conversation->id, $message->id)
-            ->delay(now()->addMinutes($delayMinutes));
+            ->delay($readyAt->isFuture() ? $readyAt : now());
     }
 
     public function isEligible(Conversation $conversation, AiChatSetting $settings, User $admin): bool
@@ -78,6 +82,10 @@ class AiChatService
         }
 
         if ($conversation->subscriber?->chat_blocked) {
+            return false;
+        }
+
+        if ($conversation->isAiBlocked()) {
             return false;
         }
 
@@ -103,7 +111,68 @@ class AiChatService
             }
         }
 
+        return $this->deferForQuietHours($settings, $readyAt);
+    }
+
+    public function deferForQuietHours(AiChatSetting $settings, Carbon $readyAt): Carbon
+    {
+        $until = $this->quietHoursUntil($settings, $readyAt);
+
+        if ($until && $until->gt($readyAt)) {
+            return $until;
+        }
+
         return $readyAt;
+    }
+
+    public function quietHoursUntil(AiChatSetting $settings, Carbon $at): ?Carbon
+    {
+        if (! $settings->quiet_hours_enabled) {
+            return null;
+        }
+
+        $start = $this->minutesFromHhmm((string) $settings->quiet_hours_start);
+        $end = $this->minutesFromHhmm((string) $settings->quiet_hours_end);
+
+        if ($start === null || $end === null || $start === $end) {
+            return null;
+        }
+
+        $tz = (string) config('xai.quiet_hours_timezone', 'America/Sao_Paulo');
+        $local = $at->copy()->timezone($tz);
+        $localMinutes = ($local->hour * 60) + $local->minute;
+
+        $inside = $start < $end
+            ? ($localMinutes >= $start && $localMinutes < $end)
+            : ($localMinutes >= $start || $localMinutes < $end);
+
+        if (! $inside) {
+            return null;
+        }
+
+        $endAt = $local->copy()->setTime(intdiv($end, 60), $end % 60, 0);
+
+        if ($start > $end && $localMinutes >= $start) {
+            $endAt->addDay();
+        }
+
+        return $endAt->timezone((string) config('app.timezone'));
+    }
+
+    private function minutesFromHhmm(string $value): ?int
+    {
+        if (! preg_match('/^(\d{1,2}):(\d{2})/', $value, $matches)) {
+            return null;
+        }
+
+        $hour = (int) $matches[1];
+        $minute = (int) $matches[2];
+
+        if ($hour > 23 || $minute > 59) {
+            return null;
+        }
+
+        return ($hour * 60) + $minute;
     }
 
     /**
@@ -135,6 +204,12 @@ class AiChatService
             $system .= "\n\nMemória deste cliente:\n".$memory;
         }
 
+        $warned = $conversation->ai_aggression_warned_at !== null;
+        $system .= "\n\nEstado interno desta conversa (nunca mostre nem envie ao assinante):";
+        $system .= "\nAGRESSAO_ADVERTIDA = ".($warned ? 'true' : 'false');
+        $system .= "\nNa primeira agressão clara, avise o assinante e acrescente [AGRESSAO_ADVERTIDA] no final da resposta.";
+        $system .= "\nSe AGRESSAO_ADVERTIDA já for true e houver nova agressão, responda SOMENTE com [ENCERRAR_CONVERSA].";
+
         $messages = [
             ['role' => 'system', 'content' => $system],
         ];
@@ -154,6 +229,67 @@ class AiChatService
         }
 
         return $messages;
+    }
+
+    /**
+     * @return array{end_conversation: bool, aggression_warned: bool, text: string}
+     */
+    public function parseSafetyReply(string $reply): array
+    {
+        $end = (bool) preg_match('/\[ENCERRAR_CONVERSA\]/iu', $reply);
+        $warned = (bool) preg_match('/\[AGRESSAO_ADVERTIDA\]|AGRESSAO_ADVERTIDA\s*=\s*true/iu', $reply);
+
+        $text = preg_replace('/\[ENCERRAR_CONVERSA\]/iu', '', $reply) ?? $reply;
+        $text = preg_replace('/\[AGRESSAO_ADVERTIDA\]/iu', '', $text) ?? $text;
+        $text = preg_replace('/AGRESSAO_ADVERTIDA\s*=\s*(true|false)/iu', '', $text) ?? $text;
+        $text = trim(preg_replace("/[ \t]+\n/", "\n", preg_replace("/\n{3,}/", "\n\n", $text) ?? $text) ?? $text);
+
+        return [
+            'end_conversation' => $end,
+            'aggression_warned' => $warned,
+            'text' => $text,
+        ];
+    }
+
+    public function blockForAggression(Conversation $conversation): void
+    {
+        $conversation->forceFill([
+            'ai_enabled' => false,
+            'ai_blocked_at' => now(),
+            'ai_blocked_reason' => 'agressividade_recorrente',
+            'ai_pending_message_id' => null,
+        ])->save();
+
+        Log::info('[AI-CHAT] Conversa bloqueada por agressividade recorrente', [
+            'conversation_id' => $conversation->id,
+        ]);
+    }
+
+    public function markAggressionWarned(Conversation $conversation): void
+    {
+        if ($conversation->ai_aggression_warned_at) {
+            return;
+        }
+
+        $conversation->forceFill([
+            'ai_aggression_warned_at' => now(),
+        ])->save();
+    }
+
+    public function setConversationAiEnabled(Conversation $conversation, bool $enabled): void
+    {
+        $payload = [
+            'ai_enabled' => $enabled,
+            'ai_pending_message_id' => null,
+        ];
+
+        if ($enabled) {
+            $payload['ai_blocked_at'] = null;
+            $payload['ai_blocked_reason'] = null;
+            $payload['ai_aggression_warned_at'] = null;
+        }
+
+        $conversation->forceFill($payload)->save();
     }
 
     public function publishReply(Conversation $conversation, User $admin, string $body): Message
