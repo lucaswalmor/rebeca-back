@@ -6,12 +6,16 @@ use App\Http\Requests\UpdateAiChatSettingsRequest;
 use App\Models\AiChatSetting;
 use App\Models\Conversation;
 use App\Services\AiChatService;
+use App\Services\GrokBillingService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
 class AiChatController extends Controller
 {
-    public function __construct(private AiChatService $aiChat) {}
+    public function __construct(
+        private AiChatService $aiChat,
+        private GrokBillingService $billing,
+    ) {}
 
     public function show(Request $request): JsonResponse
     {
@@ -53,6 +57,7 @@ class AiChatController extends Controller
                 'takeover_minutes' => (int) ($settings->takeover_minutes ?: config('xai.default_takeover_minutes', 15)),
                 'has_api_key' => filled(config('xai.api_key')),
                 'model' => (string) config('xai.model'),
+                'credits' => $this->billing->balance(),
                 'conversations' => $conversations,
             ],
         ]);
@@ -74,6 +79,19 @@ class AiChatController extends Controller
         );
 
         return $this->show($request);
+    }
+
+    public function credits(Request $request): JsonResponse
+    {
+        $admin = $request->user();
+
+        if (! $admin->isAdmin()) {
+            return response()->json(['message' => 'Apenas a administradora pode ver o saldo.'], 403);
+        }
+
+        return response()->json([
+            'data' => $this->billing->balance(fresh: true),
+        ]);
     }
 
     public function toggleConversation(Request $request, int $id): JsonResponse

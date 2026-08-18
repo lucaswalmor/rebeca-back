@@ -4,6 +4,12 @@ return [
 
     'api_key' => env('XAI_API_KEY'),
 
+    'management_key' => env('XAI_MANAGEMENT_KEY'),
+
+    'team_id' => env('XAI_TEAM_ID'),
+
+    'management_base_url' => env('XAI_MANAGEMENT_BASE_URL', 'https://management-api.x.ai'),
+
     'base_url' => env('XAI_BASE_URL', 'https://api.x.ai/v1'),
 
     'model' => env('XAI_MODEL', 'grok-4.3'),

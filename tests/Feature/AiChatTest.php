@@ -287,4 +287,27 @@ class AiChatTest extends TestCase
 
         $this->getJson('/api/admin/ai-chat')->assertForbidden();
     }
+
+    public function test_admin_sees_grok_prepaid_balance(): void
+    {
+        Http::fake([
+            'https://management-api.x.ai/v1/billing/teams/*' => Http::response([
+                'total' => ['val' => '-412'],
+            ], 200),
+        ]);
+
+        config([
+            'xai.management_key' => 'test-management-key',
+            'xai.team_id' => 'team-test',
+        ]);
+
+        $chat = $this->openChat();
+        Sanctum::actingAs($chat['admin']);
+
+        $this->getJson('/api/admin/ai-chat')
+            ->assertSuccessful()
+            ->assertJsonPath('data.credits.configured', true)
+            ->assertJsonPath('data.credits.remaining_usd', 4.12)
+            ->assertJsonPath('data.credits.error', null);
+    }
 }

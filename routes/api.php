@@ -163,6 +163,7 @@ Route::middleware('auth:sanctum')
     ->group(function () {
         Route::get('/ai-chat', 'show');
         Route::put('/ai-chat', 'update');
+        Route::get('/ai-chat/credits', 'credits');
         Route::post('/ai-chat/conversations/{id}/toggle', 'toggleConversation');
     });
 

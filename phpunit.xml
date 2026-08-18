@@ -31,5 +31,8 @@
         <env name="PULSE_ENABLED" value="false"/>
         <env name="TELESCOPE_ENABLED" value="false"/>
         <env name="NIGHTWATCH_ENABLED" value="false"/>
+        <env name="XAI_API_KEY" value=""/>
+        <env name="XAI_MANAGEMENT_KEY" value=""/>
+        <env name="XAI_TEAM_ID" value=""/>
     </php>
 </phpunit>
