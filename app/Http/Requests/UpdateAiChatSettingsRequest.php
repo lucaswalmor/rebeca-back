@@ -16,7 +16,7 @@ class UpdateAiChatSettingsRequest extends FormRequest
         return [
             'enabled' => ['required', 'boolean'],
             'scope' => ['required', 'in:selected,all'],
-            'system_prompt' => ['nullable', 'string', 'max:8000'],
+            'system_prompt' => ['nullable', 'string', 'max:50000'],
             'reply_delay_minutes' => ['required', 'integer', 'min:0', 'max:120'],
             'takeover_minutes' => ['required', 'integer', 'min:1', 'max:1440'],
         ];
@@ -25,7 +25,7 @@ class UpdateAiChatSettingsRequest extends FormRequest
     public function messages(): array
     {
         return [
-            'scope.in' => 'Escolha se a I.A responde todos ou só os selecionados.',
+            'system_prompt.max' => 'O prompt pode ter no máximo 50.000 caracteres.',
             'reply_delay_minutes.min' => 'O delay de resposta não pode ser negativo.',
             'takeover_minutes.min' => 'O tempo para a I.A reassumir deve ser de pelo menos 1 minuto.',
         ];
