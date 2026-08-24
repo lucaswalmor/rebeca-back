@@ -13,6 +13,7 @@ use App\Http\Controllers\CommentReplyController;
 use App\Http\Controllers\ConteudoExclusivoController;
 use App\Http\Controllers\CreditController;
 use App\Http\Controllers\LiveController;
+use App\Http\Controllers\PasswordResetController;
 use App\Http\Controllers\PostCompraController;
 use App\Http\Controllers\PostController;
 use App\Http\Controllers\PostLikeController;
@@ -33,6 +34,10 @@ Route::get('/', function () {
 Route::post('/login', [AuthController::class, 'login']);
 Route::post('/register', [AuthController::class, 'register']);
 Route::post('/logout', [AuthController::class, 'logout'])->middleware('auth:sanctum');
+Route::post('/forgot-password', [PasswordResetController::class, 'forgot'])->middleware('throttle:5,1');
+Route::post('/reset-password', [PasswordResetController::class, 'reset'])->middleware('throttle:10,1');
+Route::post('/password/change-request', [PasswordResetController::class, 'requestChange'])
+    ->middleware(['auth:sanctum', 'throttle:5,1']);
 
 Route::get('/user', function (Request $request) {
     return $request->user();
