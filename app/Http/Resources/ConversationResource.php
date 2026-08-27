@@ -35,7 +35,8 @@ class ConversationResource extends JsonResource
             'id' => $this->id,
             'admin_id' => $this->admin_id,
             'subscriber_id' => $this->subscriber_id,
-            'last_message_at' => $latest?->created_at?->toIso8601String(),
+            'last_message_at' => $latest?->created_at?->toIso8601String()
+                ?? $this->last_message_at?->toIso8601String(),
             'unread_count' => $user ? $this->unreadCountFor($user) : 0,
             'other_user' => $other ? [
                 'id' => $other->id,

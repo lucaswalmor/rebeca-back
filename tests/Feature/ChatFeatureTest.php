@@ -170,11 +170,25 @@ class ChatFeatureTest extends TestCase
             'last_message_at' => now(),
         ]);
 
+        $conversation = Conversation::query()
+            ->where('admin_id', $admin->id)
+            ->where('subscriber_id', $subscriber->id)
+            ->firstOrFail();
+
+        Message::create([
+            'conversation_id' => $conversation->id,
+            'user_id' => $subscriber->id,
+            'type' => 'text',
+            'body' => 'Oi, última mensagem do chat',
+        ]);
+
         Sanctum::actingAs($admin);
 
         $this->getJson('/api/chat/conversations')
             ->assertOk()
-            ->assertJsonCount(1, 'data');
+            ->assertJsonCount(1, 'data')
+            ->assertJsonPath('data.0.latest_message.body', 'Oi, última mensagem do chat')
+            ->assertJsonPath('data.0.latest_message.type', 'text');
     }
 
     public function test_subscriber_can_clear_chat_only_for_themselves(): void

@@ -65,7 +65,10 @@ class Conversation extends Model
 
     public function latestMessage(): HasOne
     {
-        return $this->hasOne(Message::class)->latestOfMany();
+        return $this->hasOne(Message::class)->ofMany([
+            'created_at' => 'max',
+            'id' => 'max',
+        ]);
     }
 
     public function isParticipant(User $user): bool
