@@ -34,5 +34,7 @@
         <env name="XAI_API_KEY" value=""/>
         <env name="XAI_MANAGEMENT_KEY" value=""/>
         <env name="XAI_TEAM_ID" value=""/>
+        <env name="EVOLUTION_BASE_URL" value=""/>
+        <env name="EVOLUTION_API_KEY" value=""/>
     </php>
 </phpunit>

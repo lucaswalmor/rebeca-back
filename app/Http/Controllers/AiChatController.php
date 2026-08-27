@@ -38,6 +38,7 @@ class AiChatController extends Controller
                 'ai_enabled' => (bool) $conversation->ai_enabled,
                 'ai_blocked' => $conversation->isAiBlocked(),
                 'ai_blocked_reason' => $conversation->ai_blocked_reason,
+                'ai_human_handoff' => $conversation->isHumanHandoffPaused(),
                 'last_message_at' => $conversation->last_message_at?->toIso8601String(),
                 'subscriber' => $conversation->subscriber ? [
                     'id' => $conversation->subscriber->id,
@@ -126,6 +127,7 @@ class AiChatController extends Controller
                 'ai_enabled' => (bool) $conversation->ai_enabled,
                 'ai_blocked' => $conversation->isAiBlocked(),
                 'ai_blocked_reason' => $conversation->ai_blocked_reason,
+                'ai_human_handoff' => $conversation->isHumanHandoffPaused(),
             ],
         ]);
     }

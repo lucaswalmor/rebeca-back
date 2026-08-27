@@ -6,6 +6,7 @@ use App\Models\Conversation;
 use App\Models\Message;
 use App\Services\AiChatService;
 use App\Services\GrokChatClient;
+use App\Services\HumanHandoffNotifier;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
 use Illuminate\Support\Facades\Cache;
@@ -24,7 +25,7 @@ class GenerateAiChatReply implements ShouldQueue
         public int $messageId,
     ) {}
 
-    public function handle(AiChatService $aiChat, GrokChatClient $grok): void
+    public function handle(AiChatService $aiChat, GrokChatClient $grok, HumanHandoffNotifier $notifier): void
     {
         $lock = Cache::lock('ai-chat-'.$this->conversationId, 90);
 
@@ -35,13 +36,13 @@ class GenerateAiChatReply implements ShouldQueue
         }
 
         try {
-            $this->process($aiChat, $grok);
+            $this->process($aiChat, $grok, $notifier);
         } finally {
             $lock->release();
         }
     }
 
-    private function process(AiChatService $aiChat, GrokChatClient $grok): void
+    private function process(AiChatService $aiChat, GrokChatClient $grok, HumanHandoffNotifier $notifier): void
     {
         $conversation = Conversation::query()
             ->with(['admin', 'subscriber'])
@@ -107,6 +108,12 @@ class GenerateAiChatReply implements ShouldQueue
             return;
         }
 
+        if ($parsed['human_handoff']) {
+            $aiChat->pauseForHumanHandoff($conversation, $notifier);
+
+            return;
+        }
+
         if ($aiChat->looksLikeRefusal($parsed['text'])) {
             Log::warning('[AI-CHAT] Resposta vazia ou recusada', [
                 'conversation_id' => $conversation->id,
@@ -147,10 +154,24 @@ class GenerateAiChatReply implements ShouldQueue
             return;
         }
 
-        foreach ($aiChat->splitReply($parsed['text']) as $chunk) {
-            $aiChat->publishReply($conversation, $admin, $chunk);
+        $chunks = $aiChat->splitReply($parsed['text']);
+        $first = array_shift($chunks);
+
+        if ($first === null || $first === '') {
+            $conversation->forceFill(['ai_pending_message_id' => null])->save();
+
+            return;
         }
 
-        $aiChat->maybeRefreshMemory($conversation, $admin, $grok);
+        $published = $aiChat->publishReply($conversation, $admin, $first);
+
+        if ($chunks === []) {
+            $aiChat->maybeRefreshMemory($conversation, $admin, $grok);
+
+            return;
+        }
+
+        PublishAiChatChunk::dispatch($conversation->id, $published->id, $chunks)
+            ->delay($aiChat->nextChunkDelay());
     }
 }

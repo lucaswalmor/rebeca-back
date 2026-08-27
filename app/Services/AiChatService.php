@@ -39,6 +39,8 @@ class AiChatService
                 $conversation->forceFill([
                     'last_human_admin_at' => now(),
                     'ai_pending_message_id' => null,
+                    'ai_human_handoff_at' => null,
+                    'ai_human_handoff_notified_at' => null,
                 ])->save();
             }
 
@@ -86,6 +88,10 @@ class AiChatService
         }
 
         if ($conversation->isAiBlocked()) {
+            return false;
+        }
+
+        if ($conversation->isHumanHandoffPaused()) {
             return false;
         }
 
@@ -209,6 +215,9 @@ class AiChatService
         $system .= "\nAGRESSAO_ADVERTIDA = ".($warned ? 'true' : 'false');
         $system .= "\nNa primeira agressão clara, avise o assinante e acrescente [AGRESSAO_ADVERTIDA] no final da resposta.";
         $system .= "\nSe AGRESSAO_ADVERTIDA já for true e houver nova agressão, responda SOMENTE com [ENCERRAR_CONVERSA].";
+        $system .= "\nSe o assinante só perguntar se você faz fotos/vídeos personalizados, responda normalmente que sim.";
+        $system .= "\nSe ele pedir preço, prazo, Pix, pagamento, negociar valor/entrega ou o pedido depender da sua aprovação, responda SOMENTE com [ATENDIMENTO_HUMANO_PERSONALIZADO].";
+        $system .= "\nVocê pode responder em 1, 2 ou 3 mensagens curtas. Separe cada mensagem com uma linha em branco. Sem marcadores.";
 
         $messages = [
             ['role' => 'system', 'content' => $system],
@@ -232,23 +241,77 @@ class AiChatService
     }
 
     /**
-     * @return array{end_conversation: bool, aggression_warned: bool, text: string}
+     * @return array{end_conversation: bool, aggression_warned: bool, human_handoff: bool, text: string}
      */
     public function parseSafetyReply(string $reply): array
     {
         $end = (bool) preg_match('/\[ENCERRAR_CONVERSA\]/iu', $reply);
         $warned = (bool) preg_match('/\[AGRESSAO_ADVERTIDA\]|AGRESSAO_ADVERTIDA\s*=\s*true/iu', $reply);
+        $handoff = (bool) preg_match('/\[ATENDIMENTO_HUMANO_PERSONALIZADO\]/iu', $reply);
 
         $text = preg_replace('/\[ENCERRAR_CONVERSA\]/iu', '', $reply) ?? $reply;
         $text = preg_replace('/\[AGRESSAO_ADVERTIDA\]/iu', '', $text) ?? $text;
         $text = preg_replace('/AGRESSAO_ADVERTIDA\s*=\s*(true|false)/iu', '', $text) ?? $text;
+        $text = preg_replace('/\[ATENDIMENTO_HUMANO_PERSONALIZADO\]/iu', '', $text) ?? $text;
         $text = trim(preg_replace("/[ \t]+\n/", "\n", preg_replace("/\n{3,}/", "\n\n", $text) ?? $text) ?? $text);
 
         return [
             'end_conversation' => $end,
             'aggression_warned' => $warned,
+            'human_handoff' => $handoff,
             'text' => $text,
         ];
+    }
+
+    public function pauseForHumanHandoff(Conversation $conversation, HumanHandoffNotifier $notifier): void
+    {
+        $conversation->forceFill([
+            'ai_human_handoff_at' => now(),
+            'ai_pending_message_id' => null,
+        ])->save();
+
+        Log::info('[AI-CHAT] Conversa pausada para atendimento humano (personalizado)', [
+            'conversation_id' => $conversation->id,
+        ]);
+
+        try {
+            $notifier->notifyPersonalizedContent($conversation);
+        } catch (\Throwable $e) {
+            Log::warning('[AI-CHAT] Notificação de handoff falhou sem interromper o chat', [
+                'conversation_id' => $conversation->id,
+                'error' => $e->getMessage(),
+            ]);
+        }
+    }
+
+    public function canPublishNextChunk(Conversation $conversation, int $previousMessageId): bool
+    {
+        if ($conversation->isAiBlocked() || $conversation->isHumanHandoffPaused()) {
+            return false;
+        }
+
+        $latest = Message::query()
+            ->where('conversation_id', $conversation->id)
+            ->orderByDesc('id')
+            ->first();
+
+        if (! $latest || (int) $latest->id !== $previousMessageId) {
+            return false;
+        }
+
+        if ((int) $latest->user_id !== (int) $conversation->admin_id) {
+            return false;
+        }
+
+        return (bool) $latest->sent_by_ai;
+    }
+
+    public function nextChunkDelay(): Carbon
+    {
+        $min = max(0, (int) config('xai.chunk_delay_min_seconds', 3));
+        $max = max($min, (int) config('xai.chunk_delay_max_seconds', 6));
+
+        return now()->addSeconds(random_int($min, $max));
     }
 
     public function blockForAggression(Conversation $conversation): void
@@ -287,6 +350,8 @@ class AiChatService
             $payload['ai_blocked_at'] = null;
             $payload['ai_blocked_reason'] = null;
             $payload['ai_aggression_warned_at'] = null;
+            $payload['ai_human_handoff_at'] = null;
+            $payload['ai_human_handoff_notified_at'] = null;
         }
 
         $conversation->forceFill($payload)->save();

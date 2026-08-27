@@ -184,7 +184,7 @@ class AiChatTest extends TestCase
         $this->assertNotNull($trigger);
 
         $job = new GenerateAiChatReply($chat['conversation']->id, $trigger->id);
-        $job->handle(app(AiChatService::class), app(\App\Services\GrokChatClient::class));
+        $job->handle(app(AiChatService::class), app(\App\Services\GrokChatClient::class), app(\App\Services\HumanHandoffNotifier::class));
 
         $this->assertDatabaseHas('messages', [
             'conversation_id' => $chat['conversation']->id,
@@ -200,7 +200,7 @@ class AiChatTest extends TestCase
         Http::fake([
             'https://api.x.ai/v1/chat/completions' => Http::response([
                 'choices' => [
-                    ['message' => ['content' => "Amor, não gostei desse jeito. [AGRESSAO_ADVERTIDA]"]],
+                    ['message' => ['content' => 'Amor, não gostei desse jeito. [AGRESSAO_ADVERTIDA]']],
                 ],
             ], 200),
         ]);
@@ -215,7 +215,7 @@ class AiChatTest extends TestCase
 
         $trigger = Message::query()->where('user_id', $chat['subscriber']->id)->latest('id')->first();
         $job = new GenerateAiChatReply($chat['conversation']->id, $trigger->id);
-        $job->handle(app(AiChatService::class), app(\App\Services\GrokChatClient::class));
+        $job->handle(app(AiChatService::class), app(\App\Services\GrokChatClient::class), app(\App\Services\HumanHandoffNotifier::class));
 
         $this->assertDatabaseHas('messages', [
             'conversation_id' => $chat['conversation']->id,
@@ -257,7 +257,7 @@ class AiChatTest extends TestCase
 
         $trigger = Message::query()->where('user_id', $chat['subscriber']->id)->latest('id')->first();
         $job = new GenerateAiChatReply($chat['conversation']->id, $trigger->id);
-        $job->handle(app(AiChatService::class), app(\App\Services\GrokChatClient::class));
+        $job->handle(app(AiChatService::class), app(\App\Services\GrokChatClient::class), app(\App\Services\HumanHandoffNotifier::class));
 
         $this->assertDatabaseMissing('messages', [
             'conversation_id' => $chat['conversation']->id,
@@ -340,7 +340,7 @@ class AiChatTest extends TestCase
         ])->assertSuccessful();
 
         $job = new GenerateAiChatReply($chat['conversation']->id, $trigger->id);
-        $job->handle(app(AiChatService::class), app(\App\Services\GrokChatClient::class));
+        $job->handle(app(AiChatService::class), app(\App\Services\GrokChatClient::class), app(\App\Services\HumanHandoffNotifier::class));
 
         Http::assertNothingSent();
         $this->assertDatabaseMissing('messages', [
@@ -493,7 +493,7 @@ class AiChatTest extends TestCase
 
         $trigger = Message::query()->where('user_id', $chat['subscriber']->id)->latest('id')->first();
         $job = new GenerateAiChatReply($chat['conversation']->id, $trigger->id);
-        $job->handle(app(AiChatService::class), app(\App\Services\GrokChatClient::class));
+        $job->handle(app(AiChatService::class), app(\App\Services\GrokChatClient::class), app(\App\Services\HumanHandoffNotifier::class));
 
         Http::assertNothingSent();
         $this->assertDatabaseMissing('messages', [

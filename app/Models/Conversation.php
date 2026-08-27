@@ -26,6 +26,8 @@ class Conversation extends Model
         'ai_aggression_warned_at',
         'ai_blocked_at',
         'ai_blocked_reason',
+        'ai_human_handoff_at',
+        'ai_human_handoff_notified_at',
     ];
 
     protected function casts(): array
@@ -40,12 +42,19 @@ class Conversation extends Model
             'last_human_admin_at' => 'datetime',
             'ai_aggression_warned_at' => 'datetime',
             'ai_blocked_at' => 'datetime',
+            'ai_human_handoff_at' => 'datetime',
+            'ai_human_handoff_notified_at' => 'datetime',
         ];
     }
 
     public function isAiBlocked(): bool
     {
         return $this->ai_blocked_at !== null;
+    }
+
+    public function isHumanHandoffPaused(): bool
+    {
+        return $this->ai_human_handoff_at !== null;
     }
 
     public function admin(): BelongsTo

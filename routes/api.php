@@ -12,6 +12,7 @@ use App\Http\Controllers\CommentController;
 use App\Http\Controllers\CommentReplyController;
 use App\Http\Controllers\ConteudoExclusivoController;
 use App\Http\Controllers\CreditController;
+use App\Http\Controllers\EvolutionWebhookController;
 use App\Http\Controllers\LiveController;
 use App\Http\Controllers\PasswordResetController;
 use App\Http\Controllers\PostCompraController;
@@ -20,6 +21,7 @@ use App\Http\Controllers\PostLikeController;
 use App\Http\Controllers\PresentinhoController;
 use App\Http\Controllers\PurchasedGalleryController;
 use App\Http\Controllers\UserController;
+use App\Http\Controllers\WhatsAppInstanceController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Broadcast;
 use Illuminate\Support\Facades\Route;
@@ -171,6 +173,20 @@ Route::middleware('auth:sanctum')
         Route::get('/ai-chat/credits', 'credits');
         Route::post('/ai-chat/conversations/{id}/toggle', 'toggleConversation');
     });
+
+Route::middleware('auth:sanctum')
+    ->prefix('admin')
+    ->controller(WhatsAppInstanceController::class)
+    ->group(function () {
+        Route::get('/whatsapp', 'show');
+        Route::post('/whatsapp/conectar', 'connect');
+        Route::get('/whatsapp/status', 'status');
+        Route::put('/whatsapp/notify-number', 'updateNotifyNumber');
+        Route::post('/whatsapp/desconectar', 'disconnect');
+        Route::delete('/whatsapp', 'destroy');
+    });
+
+Route::post('/webhooks/evolution', EvolutionWebhookController::class);
 
 Route::middleware('auth:sanctum')
     ->prefix('admin')

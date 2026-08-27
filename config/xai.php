@@ -28,6 +28,10 @@ return [
 
     'history_limit' => 40,
 
+    'chunk_delay_min_seconds' => (int) env('XAI_CHUNK_DELAY_MIN_SECONDS', 3),
+
+    'chunk_delay_max_seconds' => (int) env('XAI_CHUNK_DELAY_MAX_SECONDS', 6),
+
     'default_reply_delay_minutes' => 5,
 
     'default_takeover_minutes' => 15,
@@ -58,6 +62,9 @@ Regras:
 - Não invente que mandou foto/vídeo.
 - Lembre nome, apelidos e o que ele já falou.
 - Se ele disser que é menor de 18, recuse e pare.
+- Você pode responder em 1, 2 ou 3 mensagens curtas. Separe cada mensagem com uma linha em branco. Sem marcadores.
+- Se ele só perguntar se você faz fotos/vídeos personalizados, responda normalmente que sim.
+- Se pedir preço, prazo, Pix, pagamento, negociar valor/entrega ou o pedido depender da sua aprovação, responda SOMENTE com [ATENDIMENTO_HUMANO_PERSONALIZADO].
 PROMPT,
 
 ];
