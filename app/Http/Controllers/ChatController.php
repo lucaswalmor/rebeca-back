@@ -2,12 +2,12 @@
 
 namespace App\Http\Controllers;
 
-use App\Exceptions\InsufficientCreditsException;
 use App\Events\ConversationUpdated;
 use App\Events\MessageDeleted;
 use App\Events\MessageLiked;
 use App\Events\MessageSent;
 use App\Events\MessageUpdated;
+use App\Exceptions\InsufficientCreditsException;
 use App\Http\Resources\ConversationResource;
 use App\Http\Resources\MessageResource;
 use App\Mail\ChatMessageReceivedMail;
@@ -16,6 +16,7 @@ use App\Models\Message;
 use App\Models\MessageLike;
 use App\Models\MessagePurchase;
 use App\Models\User;
+use App\Services\ChatExportService;
 use App\Services\ChatLogger;
 use App\Services\CreditService;
 use Illuminate\Http\Request;
@@ -27,7 +28,10 @@ use Illuminate\Validation\ValidationException;
 
 class ChatController extends Controller
 {
-    public function __construct(private CreditService $creditService) {}
+    public function __construct(
+        private CreditService $creditService,
+        private ChatExportService $chatExport,
+    ) {}
 
     public function heartbeat(Request $request)
     {
@@ -87,6 +91,19 @@ class ChatController extends Controller
             ->get();
 
         return ConversationResource::collection($conversations);
+    }
+
+    public function export(Request $request)
+    {
+        $user = $request->user();
+
+        if (! $user->isAdmin()) {
+            return response()->json(['message' => 'Apenas a administradora pode exportar conversas.'], 403);
+        }
+
+        return response()->json([
+            'data' => $this->chatExport->forAdmin($user),
+        ]);
     }
 
     public function openOrCreate(Request $request)

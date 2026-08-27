@@ -214,6 +214,7 @@ Route::middleware('auth:sanctum')
         Route::get('/unread-count', 'unreadCount');
         Route::get('/media-package', 'mediaPackageInfo');
         Route::get('/conversations', 'index');
+        Route::get('/conversations/export', 'export');
         Route::post('/conversations/open', 'openOrCreate');
         Route::post('/conversations/start', 'startWithSubscriber');
         Route::post('/broadcast', 'broadcast');

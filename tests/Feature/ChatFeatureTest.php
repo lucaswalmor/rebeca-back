@@ -191,6 +191,82 @@ class ChatFeatureTest extends TestCase
             ->assertJsonPath('data.0.latest_message.type', 'text');
     }
 
+    public function test_subscriber_cannot_export_conversations(): void
+    {
+        $this->createUser([
+            'is_admin' => true,
+            'email' => 'admin@example.com',
+            'apelido' => 'admin',
+        ]);
+        $subscriber = $this->createUser();
+        $this->createActiveSubscription($subscriber);
+
+        Sanctum::actingAs($subscriber);
+
+        $this->getJson('/api/chat/conversations/export')
+            ->assertForbidden();
+    }
+
+    public function test_admin_can_export_conversations_with_client_and_admin_turns(): void
+    {
+        $admin = $this->createUser([
+            'is_admin' => true,
+            'email' => 'admin@example.com',
+            'apelido' => 'admin',
+        ]);
+        $subscriber = $this->createUser([
+            'nome' => 'Joao',
+            'sobrenome' => 'Silva',
+            'apelido' => 'joaosilva',
+        ]);
+        $this->createActiveSubscription($subscriber);
+
+        $conversation = Conversation::create([
+            'admin_id' => $admin->id,
+            'subscriber_id' => $subscriber->id,
+            'last_message_at' => now(),
+        ]);
+
+        Message::create([
+            'conversation_id' => $conversation->id,
+            'user_id' => $admin->id,
+            'type' => 'text',
+            'body' => 'Oiii bb, tudo bem?',
+            'sent_by_ai' => false,
+        ]);
+
+        Message::create([
+            'conversation_id' => $conversation->id,
+            'user_id' => $subscriber->id,
+            'type' => 'text',
+            'body' => 'Oi, quero te conhecer',
+        ]);
+
+        Message::create([
+            'conversation_id' => $conversation->id,
+            'user_id' => $admin->id,
+            'type' => 'text',
+            'body' => 'Claro amor, me conta',
+            'sent_by_ai' => true,
+        ]);
+
+        Sanctum::actingAs($admin);
+
+        $this->getJson('/api/chat/conversations/export')
+            ->assertOk()
+            ->assertJsonPath('data.conversations_count', 1)
+            ->assertJsonPath('data.messages_count', 3)
+            ->assertJsonPath('data.conversations.0.cliente.apelido', 'joaosilva')
+            ->assertJsonPath('data.conversations.0.messages.0.from', 'admin')
+            ->assertJsonPath('data.conversations.0.messages.0.via_ia', false)
+            ->assertJsonPath('data.conversations.0.messages.0.text', 'Oiii bb, tudo bem?')
+            ->assertJsonPath('data.conversations.0.messages.1.from', 'cliente')
+            ->assertJsonPath('data.conversations.0.messages.1.text', 'Oi, quero te conhecer')
+            ->assertJsonPath('data.conversations.0.messages.2.from', 'admin')
+            ->assertJsonPath('data.conversations.0.messages.2.via_ia', true)
+            ->assertJsonPath('data.conversations.0.messages.2.text', 'Claro amor, me conta');
+    }
+
     public function test_subscriber_can_clear_chat_only_for_themselves(): void
     {
         $admin = $this->createUser([
